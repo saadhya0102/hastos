@@ -1,0 +1,134 @@
+# What Is Systems Programming?
+
+Most software you use sits on top of a tall stack of other software. When you write
+`total = price * quantity` in Python, an enormous amount happens beneath that line: the
+value is stored somewhere in memory, the CPU executes machine instructions to multiply it,
+the operating system decided your program could run at all, and the hardware shuffled bytes
+between registers, caches, and RAM to make it happen.
+
+**Systems programming is the practice of building and understanding the layers underneath
+application code** — the runtimes, libraries, operating systems, and the machine itself.
+
+## The stack of abstractions
+
+Every program runs inside a tower of abstractions. From the bottom up:
+
+```
++-------------------------------------------+
+|  Your application (Python, web app, ...)  |
++-------------------------------------------+
+|  Language runtime / standard library      |   <- garbage collector, allocator
++-------------------------------------------+
+|  System calls (open, read, mmap, ...)     |   <- the kernel's API
++-------------------------------------------+
+|  Operating system kernel                  |   <- processes, memory, files, scheduling
++-------------------------------------------+
+|  Instruction Set Architecture (x86-64)    |   <- the CPU's contract
++-------------------------------------------+
+|  Hardware: CPU, caches, RAM, devices      |
++-------------------------------------------+
+```
+
+Application programmers mostly work in the top box and trust the rest. Systems programmers
+work in the **middle boxes** — and to do that well, you have to understand the ones below.
+
+<Aside kind="insight">
+A useful definition: you're doing systems programming when the *resources themselves* —
+memory, CPU time, I/O, concurrency — are part of the problem you're solving, not just
+details the runtime hides from you.
+</Aside>
+
+## Application vs. systems thinking
+
+The same task looks different through each lens:
+
+- **Application view:** "Append items to a list until I'm done." The language handles growth.
+- **Systems view:** "The list's backing array doubles when full; each growth copies all
+  elements; so appends are *amortized* O(1) but occasionally O(n), and the memory layout
+  affects cache behavior."
+
+Neither view is wrong — but the systems view is what lets you reason about *why* code is
+fast or slow, *why* it crashes, and *whether* it's correct under concurrency.
+
+<KnowledgeCheck
+  id="wis-q1"
+  type="mcq"
+  prompt="Which concern is most characteristic of systems programming?"
+  options={[
+    "Choosing a CSS framework for a settings page",
+    "Deciding how memory is allocated and freed to avoid fragmentation",
+    "Naming variables clearly",
+    "Picking a date-formatting library"
+  ]}
+  answer={1}
+  explanation="Systems programming makes resources like memory part of the problem — here, allocation strategy and fragmentation."
+/>
+
+## Why bother learning this?
+
+Four recurring reasons:
+
+1. **Performance.** You can't optimize what you don't understand. Knowing that a cache line
+   is 64 bytes, or that a branch mispredict costs ~15 cycles, turns "it's slow" into a plan.
+2. **Correctness.** Undefined behavior, data races, and memory bugs are invisible until they
+   ruin your day. Systems knowledge is how you prevent and diagnose them.
+3. **Security.** Buffer overflows, use-after-free, and integer overflows are systems-level
+   bugs that become exploits. Understanding the machine is understanding the attack surface.
+4. **Control.** Sometimes you genuinely need to manage memory by hand, talk to hardware, or
+   squeeze a data structure into a cache line. That's the job.
+
+<Aside kind="note">
+"Latency numbers every programmer should know" is a famous list: an L1 cache hit is ~1 ns,
+main memory ~100 ns, an SSD read ~100 us, and a round trip across a datacenter ~0.5 ms. Each
+step down is roughly 100-1000x slower. Internalizing this ordering is a systems superpower.
+</Aside>
+
+<KnowledgeCheck
+  id="wis-q2"
+  type="mcq"
+  prompt="Order these from fastest to slowest access: main memory (DRAM), L1 cache, SSD."
+  options={[
+    "L1 cache, DRAM, SSD",
+    "DRAM, L1 cache, SSD",
+    "SSD, DRAM, L1 cache",
+    "L1 cache, SSD, DRAM"
+  ]}
+  answer={0}
+  explanation="L1 (~1 ns) is fastest, DRAM (~100 ns) next, SSD (~100 us) far slower."
+/>
+
+## What you'll build in this course
+
+This isn't a course of toy exercises. Across the modules you'll implement real systems
+artifacts — the kinds of things that power databases, operating systems, and high-performance
+servers:
+
+- a dynamic memory allocator (`malloc`/`free`),
+- a spinlock, a thread pool, and a **lock-free queue**,
+- a B-tree node and an LRU cache,
+- a tiny shell, schedulers, and a write-ahead log.
+
+Each one is graded in the browser by a hidden test harness — including data-race detection
+for the concurrency problems.
+
+## Our language: C (mostly)
+
+We'll lean on **C** because it's the *lingua franca* of systems: it maps closely to the
+machine, hides almost nothing, and underlies most operating systems and runtimes. Later
+modules add C++ (atomics), Rust (safe concurrency), x86-64 assembly (to see the machine), and
+Python (Pyodide-style scripting) — but you'll only be asked to use a language when a lesson
+genuinely needs it.
+
+If your C is rusty or nonexistent, that's expected. The next lesson builds the **C mental
+model** from first principles.
+
+## Recap
+
+- Systems programming is about the layers beneath application code, where resources are the
+  problem.
+- The abstraction stack runs hardware → ISA → kernel → runtime → app.
+- It matters for performance, correctness, security, and control.
+- You'll implement real systems artifacts, graded in-browser, mostly in C.
+
+Next: **The C Mental Model** — memory as bytes, pointers as addresses, and the ever-present
+danger of undefined behavior.

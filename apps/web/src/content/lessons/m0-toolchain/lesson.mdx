@@ -1,0 +1,161 @@
+# From Source to a Running Program: The Toolchain
+
+When you click **Submit** on HastOS, your C source doesn't run directly — it's transformed
+through a pipeline of tools into machine code the CPU can execute. Understanding this pipeline
+demystifies a huge class of errors ("why won't this compile?" vs. "why won't this link?") and
+sets up the Linking module later.
+
+## The four stages
+
+A single command like `gcc main.c -o app` actually runs four stages in sequence:
+
+```
+main.c
+  | 1. Preprocess  (cpp)        -> expands #include, #define, #if
+  v
+main.i  (pure C, no directives)
+  | 2. Compile     (cc1)        -> translates C to assembly
+  v
+main.s  (x86-64 assembly)
+  | 3. Assemble    (as)         -> assembly to machine code
+  v
+main.o  (object file: machine code + a symbol table)
+  | 4. Link        (ld)         -> combine objects + libraries
+  v
+app  (executable)
+```
+
+### 1. Preprocess
+The preprocessor is a text transformer. It pastes in the contents of `#include` headers,
+substitutes `#define` macros, and resolves conditional `#if`/`#ifdef` blocks. It doesn't
+understand C — it just manipulates text. The output is a single, larger `.i` file of pure C.
+
+### 2. Compile
+The compiler proper parses that C, type-checks it, optimizes, and emits **assembly** for your
+target architecture (x86-64 here). This is where *most* of your errors are caught: syntax
+errors, type mismatches, undeclared variables.
+
+### 3. Assemble
+The assembler turns human-readable assembly into binary **machine code**, producing an
+**object file** (`.o`). An object file contains machine code plus a **symbol table**: a list
+of the names it *defines* (e.g., `my_strlen`) and the names it *needs but doesn't have yet*
+(e.g., `printf`).
+
+### 4. Link
+The linker stitches multiple object files and libraries together, **resolving symbols**:
+matching each "I need `printf`" to a definition (in the C standard library). The result is a
+runnable executable. Unresolved symbols cause *link-time* errors.
+
+<Aside kind="insight">
+Key distinction: the **compiler** works on one translation unit at a time and never sees other
+files. The **linker** is what connects them. That's why calling a function you declared but
+never defined compiles fine but fails to link.
+</Aside>
+
+<KnowledgeCheck
+  id="tc-q1"
+  type="mcq"
+  prompt="Which stage produces an object file (.o)?"
+  options={["Preprocess", "Compile", "Assemble", "Link"]}
+  answer={2}
+  explanation="The assembler turns assembly into machine code packaged as an object file with a symbol table."
+/>
+
+## Compile-time vs. link-time errors
+
+Telling these apart saves hours:
+
+- **Compile error** — the compiler rejected your C. Examples: `expected ';'`, `unknown type
+  name 'itn'`, `incompatible pointer types`. Fix the *code in that file*.
+- **Link error** — compilation succeeded for each file, but the linker couldn't resolve a
+  symbol. The classic messages:
+  - `undefined reference to 'foo'` — you declared/called `foo` but no object defines it.
+  - `multiple definition of 'bar'` — two files both define `bar`.
+
+```c
+// Compiles fine (declaration is enough for the compiler)...
+int compute(int);
+int main(void) { return compute(3); }
+// ...but FAILS TO LINK: "undefined reference to 'compute'"
+// because no file actually defines compute().
+```
+
+<KnowledgeCheck
+  id="tc-q2"
+  type="mcq"
+  prompt="You call a function that is declared in a header but defined in no .c file. What happens?"
+  options={[
+    "A compile error in the calling file",
+    "A link error: undefined reference",
+    "It runs and returns 0",
+    "A preprocessor error"
+  ]}
+  answer={1}
+  explanation="The declaration satisfies the compiler; the missing definition is only discovered at link time."
+/>
+
+## Declarations vs. definitions
+
+This is the heart of why C splits into `.h` and `.c` files:
+
+- A **declaration** says "this name exists and has this type" — e.g., a function prototype
+  `size_t my_strlen(const char *);`. It's a promise. Declarations go in **headers**.
+- A **definition** provides the actual body/storage — `size_t my_strlen(const char *s) { ... }`.
+  Definitions go in **`.c` files**.
+
+You can declare something many times but must define it exactly once (the "one definition
+rule"). Headers let many files share declarations without duplicating definitions.
+
+## Warnings and optimization flags
+
+Two flag groups you'll use constantly:
+
+- **Warnings**: `-Wall -Wextra` enable most useful warnings. Treat warnings as bugs —
+  uninitialized variables and suspicious conversions usually surface here first.
+- **Optimization**: `-O0` (none, best for debugging), `-O1`/`-O2` (typical release), `-O3`
+  (aggressive). Higher levels can *expose* undefined behavior that "worked" at `-O0`.
+
+<Aside kind="note">
+HastOS compiles your submissions with sanitizers like `-fsanitize=address,undefined`. These
+instrument your program to catch out-of-bounds accesses, use-after-free, and UB at runtime —
+turning silent corruption into a clear, immediate report. Lean on them.
+</Aside>
+
+<KnowledgeCheck
+  id="tc-q3"
+  type="mcq"
+  prompt="Why might code that works at -O0 crash at -O2?"
+  options={[
+    "The optimizer adds bugs randomly",
+    "Higher optimization can expose undefined behavior the code relied on",
+    "-O2 disables the standard library",
+    "-O2 changes the language to C++"
+  ]}
+  answer={1}
+  explanation="Optimizers assume your program has no UB; if it does, aggressive optimization can change observable behavior."
+/>
+
+## How HastOS compiles your work
+
+For a `harness`-graded problem, your editable file (say `strlen.c`) is compiled together with
+a hidden **driver** that calls your function and checks results, plus the shared **header**.
+Roughly:
+
+```
+gcc -std=c11 -O1 -g -fsanitize=address,undefined  driver.c  -o app
+# (driver.c includes your strlen.c, which includes strlen.h)
+./app   # prints machine-readable PASS/FAIL lines the grader parses
+```
+
+If your code doesn't compile, you'll see the compiler's own error output. If it compiles but
+a test fails, you'll see which test and why.
+
+## Recap
+
+- Source becomes an executable via preprocess → compile → assemble → link.
+- The compiler sees one file; the linker connects them and resolves symbols.
+- Compile errors are about code in a file; link errors are about missing/duplicate definitions.
+- Declarations (headers) promise; definitions (.c files) deliver — define exactly once.
+- Use `-Wall -Wextra`, understand `-O` levels, and trust sanitizers.
+
+Next: **Using HastOS** — how Run, Submit, test results, and SLAVA fit together.

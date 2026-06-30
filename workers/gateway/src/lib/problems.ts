@@ -91,6 +91,84 @@ int main(void) {
 #include "impl.c"
 `;
 
+const STRLEN_HEADER = `#ifndef MYSTRLEN_H
+#define MYSTRLEN_H
+#include <stddef.h>
+size_t my_strlen(const char *s);
+#endif
+`;
+
+const STRLEN_DRIVER = `#include "mystrlen.h"
+#include <stdio.h>
+#include <string.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  CHECK("empty", my_strlen("") == 0, "empty string should have length 0");
+  CHECK("single_char", my_strlen("x") == 1, "single character should have length 1");
+  CHECK("hello", my_strlen("hello") == 5, "hello should have length 5");
+  CHECK("with_spaces", my_strlen("a b c") == 5, "a b c should have length 5");
+
+  { char buf[1000]; memset(buf, 'a', 999); buf[999] = '\\0';
+    CHECK("long_string", my_strlen(buf) == 999, "999-char string should have length 999"); }
+
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const MEMCPY_HEADER = `#ifndef MYMEMCPY_H
+#define MYMEMCPY_H
+#include <stddef.h>
+void *my_memcpy(void *dst, const void *src, size_t n);
+#endif
+`;
+
+const MEMCPY_DRIVER = `#include "mymemcpy.h"
+#include <stdio.h>
+#include <string.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  { char dst[6] = {0}; my_memcpy(dst, "hello", 5); dst[5] = '\\0';
+    CHECK("basic_copy", memcmp(dst, "hello", 5) == 0, "should copy 5 bytes hello"); }
+
+  { char dst[4] = "abc"; void *r = my_memcpy(dst, "XYZ", 0);
+    CHECK("zero_bytes", dst[0] == 'a' && r == dst, "n=0 must copy nothing and return dst"); }
+
+  { char dst[4] = {0}; void *r = my_memcpy(dst, "hi", 2);
+    CHECK("returns_dst", r == dst, "must return the destination pointer"); }
+
+  { unsigned char src[5] = {0, 1, 0, 255, 7}; unsigned char dst[5] = {9, 9, 9, 9, 9};
+    my_memcpy(dst, src, 5);
+    CHECK("binary_data", memcmp(dst, src, 5) == 0, "must copy raw bytes including embedded zeros"); }
+
+  { static unsigned char src[4096], dst[4096];
+    for (int i = 0; i < 4096; i++) src[i] = (unsigned char)(i * 31 + 7);
+    my_memcpy(dst, src, 4096);
+    CHECK("large_copy", memcmp(dst, src, 4096) == 0, "must copy all 4096 bytes correctly"); }
+
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -109,6 +187,46 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       empty_pop: "hidden",
       wraparound: "hidden",
       stress_random: "hidden",
+    },
+  },
+
+  "m0-p-strlen": {
+    id: "m0-p-strlen",
+    languageId: 50,
+    header: { name: "mystrlen.h", content: STRLEN_HEADER },
+    driver: STRLEN_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "mystrlen.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      empty: "sample",
+      single_char: "hidden",
+      hello: "hidden",
+      with_spaces: "hidden",
+      long_string: "hidden",
+    },
+  },
+
+  "m0-p-memcpy": {
+    id: "m0-p-memcpy",
+    languageId: 50,
+    header: { name: "mymemcpy.h", content: MEMCPY_HEADER },
+    driver: MEMCPY_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "mymemcpy.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      basic_copy: "sample",
+      zero_bytes: "hidden",
+      returns_dst: "hidden",
+      binary_data: "hidden",
+      large_copy: "hidden",
     },
   },
 };

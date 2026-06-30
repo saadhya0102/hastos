@@ -1,0 +1,24 @@
+Implement `my_strlen`, your own version of the C standard library's `strlen`. This is the
+"hello world" of pointer walking: a C string is a `char` array terminated by a zero byte
+(`'\0'`), and the length is simply how many characters come before that terminator.
+
+## Your task
+
+In `mystrlen.c`, implement:
+
+```c
+size_t my_strlen(const char *s);
+```
+
+It must return the number of characters in `s` before the terminating `'\0'`. The empty
+string `""` has length 0. **Do not call the library `strlen`.**
+
+## Hints (no spoilers)
+
+- A C string ends at the first `'\0'`. Start a counter at 0 and advance a pointer (or index)
+  until the current character is `'\0'`.
+- Remember: the terminator itself is *not* counted.
+
+Your code is compiled with AddressSanitizer, so reading past the end of the buffer (for
+example, if you never stop at `'\0'`) will be reported as a memory error. Use **Run** to
+experiment and **Submit** to grade.

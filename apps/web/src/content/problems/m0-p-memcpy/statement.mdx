@@ -1,0 +1,25 @@
+Implement `my_memcpy`, your own version of the C standard library's `memcpy`. Copying a block
+of raw bytes from one place to another is one of the most fundamental memory operations in all
+of systems programming.
+
+## Your task
+
+In `mymemcpy.c`, implement:
+
+```c
+void *my_memcpy(void *dst, const void *src, size_t n);
+```
+
+Copy exactly `n` bytes from `src` to `dst`, then **return `dst`**. You may assume the two
+regions do **not** overlap. `n` may be `0`. **Do not call the library `memcpy`.**
+
+## Hints (no spoilers)
+
+- `void *` can't be dereferenced or stepped through directly. Cast to `unsigned char *` so
+  that adding `1` advances by a single byte.
+- Loop `n` times, copying one byte per iteration; don't forget to return `dst` at the end.
+- When `n == 0`, copy nothing and just return `dst`.
+
+Your code is graded with AddressSanitizer, so copying too many bytes (overrunning `dst` or
+reading past `src`) will be flagged as a memory error. Use **Run** to experiment and
+**Submit** to grade.

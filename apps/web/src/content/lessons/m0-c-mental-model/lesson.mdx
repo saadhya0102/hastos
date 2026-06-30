@@ -1,0 +1,229 @@
+# The C Mental Model: Memory, Pointers, and Undefined Behavior
+
+To write correct C, you need one durable mental model: **memory is a giant array of bytes,
+each with a numeric address, and everything is built on top of that.** Variables, structs,
+arrays, and strings are all just *interpretations* of bytes at some address. Pointers are
+just addresses. Once this clicks, most of C stops being mysterious.
+
+## Memory is a flat array of bytes
+
+Picture your process's memory as one enormous array:
+
+```
+address:   0      1      2      3      4      5      6   ...
+bytes:   [ ?? ] [ ?? ] [ ?? ] [ ?? ] [ ?? ] [ ?? ] [ ?? ] ...
+```
+
+Every object — an `int`, a `struct`, an array — lives at some address and occupies a
+contiguous run of bytes. A 4-byte `int` at address 100 uses bytes 100, 101, 102, 103.
+
+`sizeof(T)` tells you how many bytes a type occupies. On a typical 64-bit machine:
+
+- `char` = 1, `short` = 2, `int` = 4, `long` = 8, `void*` = 8, `double` = 8.
+
+<MiniIDE language="c" starter={`#include <stdio.h>
+int main(void) {
+  printf("char  %zu\\n", sizeof(char));
+  printf("int   %zu\\n", sizeof(int));
+  printf("long  %zu\\n", sizeof(long));
+  printf("void* %zu\\n", sizeof(void*));
+  return 0;
+}`} />
+
+<KnowledgeCheck
+  id="cm-q1"
+  type="numeric"
+  prompt="On a typical 64-bit system, how many bytes does an array `int a[4]` occupy?"
+  answer={16}
+  explanation="4 ints * 4 bytes each = 16 contiguous bytes."
+/>
+
+## Pointers are addresses
+
+A **pointer** is a variable whose value is an address. Two operators connect values and
+addresses:
+
+- `&x` — "address of `x`": where `x` lives in memory.
+- `*p` — "dereference `p`": the object stored at the address `p` holds.
+
+```c
+int x = 42;
+int *p = &x;   // p holds the address of x
+printf("%d\n", *p);  // prints 42 — follow the address, read the int
+*p = 99;             // write through the pointer
+printf("%d\n", x);   // prints 99 — we changed x via p
+```
+
+The type of a pointer matters: `int *` means "address of an int". It tells the compiler how
+many bytes to read/write when you dereference, and how far to move during pointer arithmetic.
+
+<Aside kind="pitfall">
+A pointer that doesn't point at a valid object is a loaded gun. Dereferencing a `NULL`
+pointer, a dangling pointer (one whose object was freed), or an uninitialized pointer is
+**undefined behavior** — often a crash, sometimes a silent corruption.
+</Aside>
+
+<KnowledgeCheck
+  id="cm-q2"
+  type="mcq"
+  prompt="Given `int x = 5; int *p = &x;`, what does `*p` evaluate to?"
+  options={["The address of x", "5", "A pointer to x", "Undefined"]}
+  answer={1}
+  explanation="*p dereferences p, yielding the int stored at x's address, which is 5."
+/>
+
+## Pointer arithmetic is typed
+
+Adding `1` to a pointer advances it by **one element**, not one byte. For an `int *` on a
+machine with 4-byte ints, `p + 1` is 4 bytes further along.
+
+```c
+int a[3] = {10, 20, 30};
+int *p = a;        // p points at a[0]
+printf("%d\n", *p);       // 10
+printf("%d\n", *(p + 1)); // 20  — advanced by sizeof(int)
+printf("%d\n", *(p + 2)); // 30
+```
+
+This is exactly why `a[i]` is defined as `*(a + i)`. Indexing *is* pointer arithmetic.
+
+<MiniIDE language="c" starter={`#include <stdio.h>
+int main(void) {
+  int a[3] = {10, 20, 30};
+  int *p = a;
+  for (int i = 0; i < 3; i++) {
+    printf("a[%d] = %d  (==*(p+%d) = %d)\\n", i, a[i], i, *(p + i));
+  }
+  return 0;
+}`} />
+
+## Arrays decay to pointers
+
+In most expressions, an array's name "decays" into a pointer to its first element. That's why
+you can pass an array to a function that takes a pointer — but it also means **the function
+loses the size information**. Inside `void f(int *a)`, `sizeof(a)` is the size of a *pointer*
+(8), not the array.
+
+```c
+void print_first(int *a) {
+  printf("%d\n", a[0]);  // works: a points at the first element
+  // sizeof(a) here is 8 (pointer), NOT the array's byte size!
+}
+```
+
+The fix is the C convention you'll see everywhere: **pass the length alongside the pointer**
+(e.g., `void f(int *a, size_t n)`).
+
+<KnowledgeCheck
+  id="cm-q3"
+  type="mcq"
+  prompt="Inside `void f(int *a)` on a 64-bit system, what is `sizeof(a)`?"
+  options={["The number of elements", "4", "8 (the size of a pointer)", "Undefined"]}
+  answer={2}
+  explanation="The array decayed to a pointer; sizeof a pointer is 8 bytes. The length must be passed separately."
+/>
+
+## Strings are null-terminated byte arrays
+
+C has no built-in string type. A "string" is just a `char` array whose end is marked by a
+zero byte (`'\0'`). The string `"hi"` occupies **three** bytes: `'h'`, `'i'`, `'\0'`.
+
+```
+"hi"  ->  [ 'h' ][ 'i' ][ '\0' ]
+            104    105     0
+```
+
+Functions like `strlen` walk forward from the start until they hit the `'\0'`. This is why a
+string missing its terminator causes reads to run off the end — a classic bug and security
+hole.
+
+<Aside kind="warning">
+The terminator is *data*, not metadata stored elsewhere. If you allocate space for a string,
+you must include room for the trailing `'\0'`. A 5-character name needs 6 bytes.
+</Aside>
+
+## Stack vs. heap
+
+Local variables live on the **stack**, which grows and shrinks automatically as functions are
+called and return. Memory you request with `malloc` lives on the **heap**, and you are
+responsible for freeing it.
+
+- Stack: fast, automatic, limited size, lifetime tied to the function call. (On x86-64 the
+  stack grows *downward*, toward lower addresses.)
+- Heap: flexible size and lifetime, but manual — forget to `free` and you leak; `free` twice
+  and you corrupt the allocator.
+
+```c
+int on_stack = 7;                 // freed automatically when the function returns
+int *on_heap = malloc(sizeof(int)); // you must free(on_heap) later
+*on_heap = 7;
+free(on_heap);
+```
+
+<KnowledgeCheck
+  id="cm-q4"
+  type="mcq"
+  prompt="Which statement about heap memory from malloc is true?"
+  options={[
+    "It is freed automatically when the function returns",
+    "You must free it manually or it leaks",
+    "It always lives on the stack",
+    "It cannot be accessed through a pointer"
+  ]}
+  answer={1}
+  explanation="Heap allocations persist until you free them; forgetting to free leaks memory."
+/>
+
+## Undefined behavior: the dragon
+
+C trades safety for speed and control. When you break the language's rules, the standard
+imposes **no requirements at all** — the compiler may do anything: crash, produce garbage,
+or (worst of all) appear to work until it doesn't. This is **undefined behavior (UB)**.
+
+Common sources you must learn to avoid:
+
+- Reading uninitialized memory.
+- Dereferencing `NULL` or a dangling/freed pointer.
+- Indexing out of bounds (reading/writing past an array).
+- Signed integer overflow (e.g., `INT_MAX + 1`).
+- Use-after-free and double-free.
+- Data races (two threads touching the same memory, one writing, no synchronization).
+
+<Aside kind="insight">
+Compilers *assume* UB never happens and optimize accordingly. That's why a program can work
+at `-O0` and break at `-O2`: the optimizer exploited an assumption you violated. The cure is
+to never rely on UB — and to use sanitizers (ASan/UBSan), which HastOS runs when grading.
+</Aside>
+
+<KnowledgeCheck
+  id="cm-q5"
+  type="mcq"
+  prompt="Which of these is undefined behavior in C?"
+  options={[
+    "Adding two unsigned ints that wrap around",
+    "Reading element a[5] of `int a[5]`",
+    "Taking the address of a local variable",
+    "Comparing two pointers into the same array"
+  ]}
+  answer={1}
+  explanation="`int a[5]` has valid indices 0..4; a[5] is out of bounds and is UB. Unsigned overflow is defined (it wraps)."
+/>
+
+## Putting it together
+
+You now have the model that the rest of the course rests on:
+
+- Memory is bytes at addresses; types decide how those bytes are interpreted.
+- Pointers are addresses; `&` takes one, `*` follows one; arithmetic is by element.
+- Arrays decay to pointers (so pass lengths); strings are null-terminated.
+- Stack is automatic, heap is manual; both are just memory.
+- Undefined behavior is the constant hazard — respect the rules and lean on sanitizers.
+
+## Practice
+
+Time to apply this. Implement two of the most fundamental C functions yourself — they're all
+about walking memory through pointers. Head to the Practice problems below: **`my_strlen`**
+(walk to the null terminator) and **`my_memcpy`** (copy `n` bytes through pointers).
+
+Next lesson: **From Source to a Running Program** — how your `.c` file becomes machine code
+you can run.

@@ -1,0 +1,95 @@
+# Using HastOS: Run, Submit, and SLAVA
+
+A quick orientation to the tools you'll use on every problem, so the mechanics never get in
+the way of the learning.
+
+## Run vs. Submit
+
+Each problem opens in a split view: the statement on the left, the editor and results on the
+right. Two buttons drive the loop:
+
+- **Run** — compiles and executes your code so you can *experiment*. For a problem, Run
+  executes the harness and shows you raw output in the **Output** tab. Use it to print things,
+  poke at edge cases, and iterate quickly.
+- **Submit** — compiles your code against the **hidden test harness** and grades it. The
+  **Tests** tab shows a verdict (Accepted, Wrong Answer, Compile Error, ...) and a per-test
+  pass/fail breakdown. The hidden test *inputs* are never shown — only the test name, status,
+  and a sanitized message.
+
+<Aside kind="note">
+Sample tests are visible so you can debug; hidden tests determine your verdict. A correct
+solution must pass *all* of them.
+</Aside>
+
+<KnowledgeCheck
+  id="uh-q1"
+  type="mcq"
+  prompt="What does Submit do that Run does not?"
+  options={[
+    "Nothing, they are identical",
+    "Grades your code against the hidden test harness and reports a verdict",
+    "Formats your code",
+    "Deletes your buffer"
+  ]}
+  answer={1}
+  explanation="Run is for experimenting; Submit grades against hidden tests and produces a verdict."
+/>
+
+## Reading the results
+
+When a submission fails, the Tests panel lists each test with a status:
+
+- **pass** — the assertion held.
+- **fail** — wrong output/return value; the message hints at what diverged.
+- **error / timeout / mle** — a crash, an infinite loop hitting the time limit, or memory
+  limit exceeded.
+- A **memory_safety** or **undefined_behavior** entry means a sanitizer caught an
+  out-of-bounds access or UB in *your* code — fix the root cause, don't paper over it.
+
+The **Output** tab (from Run) shows stdout, stderr, the exit code, and time/memory used.
+
+## Editing tips
+
+- The language picker only shows languages this problem allows.
+- "Given" files (like a header) are read-only; you edit the implementation file.
+- **Reset** restores the starter code if you want a clean slate.
+
+## Working with SLAVA
+
+SLAVA — the **Systems Learning Assistant for Verification and Assessment** — is docked on
+every lesson and problem. It's a tutor, not an answer key, and it's tuned to help you *learn*:
+
+- **Hint levels.** SLAVA defaults to a **nudge** (a guiding question or the relevant concept).
+  Bump to **partial** for an approach or the category of your bug, and **full** only when you
+  truly want a concrete fix. Starting low keeps the learning yours.
+- **Explain failing test.** After a failed Submit, click *"Explain failing test with SLAVA"*
+  and it will reason about the likely cause from your code and the sanitized failure — without
+  ever seeing the hidden inputs.
+- **Always available.** Even if the main model is down, SLAVA transparently falls back to a
+  backup model so you're never fully blocked (you'll see a small "backup model" badge).
+
+<Aside kind="insight">
+A good hint request is specific: "I think my loop is off by one on the last element — what
+should the boundary condition be?" beats "it's broken." The more precisely you describe what
+you tried and expected, the better the nudge.
+</Aside>
+
+<KnowledgeCheck
+  id="uh-q2"
+  type="mcq"
+  prompt="What is the recommended way to use SLAVA's hints?"
+  options={[
+    "Always jump straight to full solutions",
+    "Start with a nudge and escalate only if you need more",
+    "Never use hints",
+    "Ask it to reveal the hidden tests"
+  ]}
+  answer={1}
+  explanation="Start with a nudge to preserve the learning; escalate to partial or full only as needed. (SLAVA can't reveal hidden tests.)"
+/>
+
+## You're ready
+
+That's the whole loop: read the lesson, experiment with Run, grade with Submit, and lean on
+SLAVA when you're stuck. Head to the **Practice** problem below — implement `my_strlen` — and
+put the C mental model to work.
