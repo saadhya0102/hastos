@@ -1056,6 +1056,76 @@ int main(void) {
 #include "impl.c"
 `;
 
+const LRU_HEADER = `#ifndef LRU_H
+#define LRU_H
+typedef struct { int cap, size; int *keys; int *vals; long *used; long tick; } lru_t;
+void lru_init(lru_t *c, int *keys, int *vals, long *used, int cap);
+int lru_get(lru_t *c, int key);
+void lru_put(lru_t *c, int key, int value);
+#endif
+`;
+
+const LRU_DRIVER = `#include "lru.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  { int k[2], v[2]; long u[2]; lru_t c; lru_init(&c, k, v, u, 2);
+    CHECK("get_miss", lru_get(&c, 1) == -1, "get on empty cache should be -1"); }
+  { int k[2], v[2]; long u[2]; lru_t c; lru_init(&c, k, v, u, 2);
+    lru_put(&c, 1, 10); CHECK("put_get", lru_get(&c, 1) == 10, "put then get should return 10"); }
+  { int k[2], v[2]; long u[2]; lru_t c; lru_init(&c, k, v, u, 2);
+    lru_put(&c, 1, 10); lru_put(&c, 1, 20); CHECK("update", lru_get(&c, 1) == 20, "update should overwrite value"); }
+  { int k[2], v[2]; long u[2]; lru_t c; lru_init(&c, k, v, u, 2);
+    lru_put(&c, 1, 10); lru_put(&c, 2, 20); lru_get(&c, 1); lru_put(&c, 3, 30);
+    int ok = lru_get(&c, 2) == -1 && lru_get(&c, 1) == 10 && lru_get(&c, 3) == 30;
+    CHECK("evict_lru", ok, "touching 1 then inserting 3 should evict 2"); }
+  { int k[2], v[2]; long u[2]; lru_t c; lru_init(&c, k, v, u, 2);
+    lru_put(&c, 1, 10); lru_put(&c, 2, 20); lru_put(&c, 3, 30);
+    int ok = lru_get(&c, 1) == -1 && lru_get(&c, 2) == 20 && lru_get(&c, 3) == 30;
+    CHECK("capacity", ok, "inserting a 3rd into a cap-2 cache evicts LRU (1)"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const CLOCK_HEADER = `#ifndef CLOCKREPL_H
+#define CLOCKREPL_H
+int clock_faults(int num_frames, const int *refs, int n);
+#endif
+`;
+
+const CLOCK_DRIVER = `#include "clockrepl.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  { int r[] = {1, 2, 3};          CHECK("all_compulsory", clock_faults(3, r, 3) == 3, "3 cold faults"); }
+  { int r[] = {1, 1, 1};          CHECK("with_repeat", clock_faults(3, r, 3) == 1, "one fault then hits"); }
+  { int r[] = {1, 2, 3};          CHECK("simple_replace", clock_faults(2, r, 3) == 3, "2 frames, 3 distinct -> 3 faults"); }
+  { int r[] = {1, 2, 3, 1, 4};    CHECK("hit_then_fault", clock_faults(3, r, 5) == 4, "expected 4 faults"); }
+  { int r[] = {1, 2, 1, 2, 3};    CHECK("loop", clock_faults(2, r, 5) == 3, "expected 3 faults"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -1534,6 +1604,46 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       big_quantum: "hidden",
       q2_two: "hidden",
       four: "hidden",
+    },
+  },
+
+  "m9-p-lru-cache": {
+    id: "m9-p-lru-cache",
+    languageId: 50,
+    header: { name: "lru.h", content: LRU_HEADER },
+    driver: LRU_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "lru.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      get_miss: "sample",
+      put_get: "hidden",
+      update: "hidden",
+      evict_lru: "hidden",
+      capacity: "hidden",
+    },
+  },
+
+  "m9-p-clock": {
+    id: "m9-p-clock",
+    languageId: 50,
+    header: { name: "clockrepl.h", content: CLOCK_HEADER },
+    driver: CLOCK_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "clockrepl.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      all_compulsory: "sample",
+      with_repeat: "hidden",
+      simple_replace: "hidden",
+      hit_then_fault: "hidden",
+      loop: "hidden",
     },
   },
 };

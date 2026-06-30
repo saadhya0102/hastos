@@ -1,0 +1,131 @@
+# Journaling and Crash Consistency
+
+A single logical file operation often updates **multiple** disk blocks (the inode, a data block, a
+free-space bitmap). If power fails **between** those writes, the file system can be left in a
+**corrupt, inconsistent** state. Crash consistency is the discipline of surviving that — and
+**journaling (write-ahead logging)** is the dominant solution, reused later for databases.
+
+## The crash-consistency problem
+
+Appending a block to a file requires (at least) three updates:
+
+1. mark a new data block as used (bitmap),
+2. write the data block,
+3. update the inode (size + new block pointer).
+
+These can't be made atomic on disk. If a crash happens after (1) but before (3), you've allocated a
+block that no file references — or worse, an inode that points to a block not marked used, which
+could be handed to another file → **corruption**. Doing the writes in any fixed order still leaves
+*some* crash window broken.
+
+<KnowledgeCheck
+  id="cc-problem"
+  type="mcq"
+  prompt="Why is crash consistency hard for file systems?"
+  options={[
+    "Disks are too fast",
+    "A single operation updates multiple blocks that can't be written atomically; a crash mid-way leaves an inconsistent state",
+    "Files are too large",
+    "RAM is volatile"
+  ]}
+  answer={1}
+  explanation="Multi-block updates aren't atomic on disk, so a power failure between writes can corrupt file-system structures."
+/>
+
+## Write-ahead logging (journaling)
+
+The fix: before touching the real structures, **first write your intent to a log (journal)**, then
+apply it. The protocol:
+
+1. Write the planned updates to the **journal** (a reserved on-disk region).
+2. Write a **commit record** marking the transaction complete.
+3. Only then **checkpoint** — apply the updates to their real locations.
+4. Once applied, the journal entry can be reclaimed.
+
+On reboot, the file system **replays the journal**: transactions with a commit record are re-applied
+(they may or may not have been checkpointed — replay is idempotent); transactions **without** a
+commit record are discarded (they never fully happened). Either way the file system ends up
+consistent. This is **write-ahead logging (WAL)** — the same idea databases use for durability.
+
+<KnowledgeCheck
+  id="cc-wal"
+  type="mcq"
+  prompt="In journaling, what is written before the real file-system structures are modified?"
+  options={[
+    "Nothing",
+    "The intended updates are written to the journal (and committed) first; then applied",
+    "The file is deleted",
+    "A backup of the whole disk"
+  ]}
+  answer={1}
+  explanation="Write-ahead logging records intent in the journal and commits it before applying changes, so recovery can replay or discard cleanly."
+/>
+
+<KnowledgeCheck
+  id="cc-replay"
+  type="mcq"
+  prompt="After a crash, what happens to a journaled transaction that has NO commit record?"
+  options={[
+    "It is replayed",
+    "It is discarded — it never fully happened, so the real structures are untouched/consistent",
+    "It corrupts the disk",
+    "It is committed automatically"
+  ]}
+  answer={1}
+  explanation="Without a commit record, the transaction is treated as incomplete and dropped; only committed transactions are replayed."
+/>
+
+## Ordered vs. data journaling
+
+Journaling everything (including file data) is safe but doubles writes. The common compromise:
+
+- **Data journaling** — journal metadata **and** data. Safest, slowest (everything written twice).
+- **Ordered (metadata) journaling** — journal only metadata, but **write data blocks before** the
+  metadata that references them. Much faster, and avoids the worst case (an inode pointing at
+  garbage). This is the typical default (e.g., ext4 ordered mode).
+
+<KnowledgeCheck
+  id="cc-ordered"
+  type="mcq"
+  prompt="What does 'ordered' (metadata) journaling do to stay safe while being faster?"
+  options={[
+    "Journals nothing",
+    "Journals only metadata but writes data blocks to their final location before the referencing metadata is committed",
+    "Journals only data",
+    "Writes metadata first, then data"
+  ]}
+  answer={1}
+  explanation="Ordered mode journals metadata only but forces data to disk before the metadata that points to it, preventing inodes from referencing garbage."
+/>
+
+## fsync and durability
+
+The buffer cache (write-back) means a `write()` returning success does **not** mean the data is on
+disk — it may still be a dirty page in RAM. **`fsync(fd)`** forces a file's dirty data (and, done
+right, its metadata) to durable storage. Databases and logs call `fsync` at the moments durability
+truly matters (e.g., after a commit record). Forgetting it is a classic data-loss bug.
+
+<KnowledgeCheck
+  id="cc-fsync"
+  type="mcq"
+  prompt="After write() returns successfully, is the data guaranteed to be on disk?"
+  options={[
+    "Yes, always",
+    "No — it may be a dirty page in the cache; call fsync to force it to durable storage",
+    "Only on SSDs",
+    "Only if the file is small"
+  ]}
+  answer={1}
+  explanation="Write-back caching means write() can return before the data is durable; fsync forces the flush."
+/>
+
+## Recap
+
+- Multi-block updates can't be atomic; a crash mid-update corrupts the file system.
+- Journaling (WAL) writes intent + commit to a log first, then applies; recovery replays committed
+  transactions and discards uncommitted ones.
+- Ordered journaling logs metadata only but writes data first — fast and safe enough.
+- `fsync` forces durability; write() alone doesn't guarantee it.
+
+That completes Module M9 — you understand the storage stack, file-system structures, caching, and
+crash consistency, the foundation for databases next.

@@ -1,0 +1,29 @@
+Implement the **CLOCK (second-chance)** page-replacement algorithm and count the **page faults**
+for a reference string. CLOCK is the cheap, near-LRU policy real kernels use.
+
+## Your task
+
+In `clockrepl.c`, implement:
+
+```c
+int clock_faults(int num_frames, const int *refs, int n);
+```
+
+Return the number of page faults when serving the references with `num_frames` frames under CLOCK.
+
+## The algorithm
+
+- Frames start empty; each frame has a **reference bit**. Keep a **hand** index.
+- For each referenced page `p`:
+  - If `p` is already in a frame → **hit**: set that frame's reference bit to 1; continue.
+  - Otherwise it's a **fault** (count it). Sweep the hand: while the frame at `hand` is occupied
+    and its reference bit is 1, clear that bit and advance the hand (mod `num_frames`). Stop at the
+    first empty frame or a frame whose reference bit is 0 — place `p` there, set its reference bit
+    to 1, and advance the hand.
+
+## Hints (no spoilers)
+
+- `num_frames <= 64`, so small fixed arrays (`frames[64]`, `refbit[64]`) work.
+- Initialize frames to `-1` (empty). Empty frames are filled first as the hand advances.
+
+Example: 3 frames, refs `[1,2,3]` → 3 faults. Use **Run** then **Submit**.

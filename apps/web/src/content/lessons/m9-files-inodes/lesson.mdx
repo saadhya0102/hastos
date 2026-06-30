@@ -1,0 +1,137 @@
+# Files, Directories, and Inodes
+
+A file system turns a flat array of disk blocks into the familiar tree of named files. The central
+data structure is the **inode**, and understanding what it holds (and what it doesn't) clears up a
+surprising amount of Unix behavior — hard links, the difference between a name and a file, and how
+paths are resolved.
+
+## The inode
+
+An **inode** ("index node") holds a file's **metadata** and the locations of its data blocks:
+
+- size, owner, permissions, timestamps, link count, type;
+- **block pointers** to where the file's data lives on disk.
+
+Notice what's **not** in the inode: the **file's name**. A name is stored separately, in a
+**directory**. The inode is the file; the name is just a label pointing to it.
+
+<KnowledgeCheck
+  id="fi-inode"
+  type="mcq"
+  prompt="Which of these does an inode NOT store?"
+  options={[
+    "File size and permissions",
+    "Pointers to the file's data blocks",
+    "The file's name",
+    "Timestamps"
+  ]}
+  answer={2}
+  explanation="The name lives in a directory entry; the inode holds metadata and data-block pointers, not the name."
+/>
+
+## Directories are files that map names to inodes
+
+A **directory** is itself a special file whose contents are a list of **(name → inode number)**
+entries. Looking up `report.txt` in a directory means scanning its entries for that name to find
+the inode number, then reading that inode.
+
+This indirection is why a file can have **multiple names** (hard links) and why renaming or moving
+within a filesystem is cheap (just edit directory entries, not the data).
+
+<KnowledgeCheck
+  id="fi-dir"
+  type="mcq"
+  prompt="What does a directory actually contain?"
+  options={[
+    "The data of all its files",
+    "A mapping from names to inode numbers",
+    "Only subdirectories",
+    "Disk block addresses for the whole disk"
+  ]}
+  answer={1}
+  explanation="A directory is a file holding name -> inode-number entries; the data lives elsewhere, referenced by the inode."
+/>
+
+## Path resolution
+
+Resolving `/home/ann/report.txt` walks the tree, one component at a time:
+
+1. Start at the root inode (a well-known inode number).
+2. In root's directory, find `home` → its inode → read that directory.
+3. Find `ann` → its inode → read that directory.
+4. Find `report.txt` → its inode → now you can read the file.
+
+Each step is a directory lookup followed by an inode read. (This is why deep paths and cold caches
+cost multiple disk reads — and why the buffer cache, next lesson, matters.)
+
+<KnowledgeCheck
+  id="fi-path"
+  type="mcq"
+  prompt="To open /a/b/c, what does the file system do at each path component?"
+  options={[
+    "Reads the whole disk",
+    "Looks up the name in the current directory to get the next inode, then reads it — repeating down the path",
+    "Hashes the full path once",
+    "Nothing until the final component"
+  ]}
+  answer={1}
+  explanation="Path resolution is component-by-component: directory lookup -> inode -> next directory, walking from the root."
+/>
+
+## Hard links vs. symbolic links
+
+- A **hard link** is another directory entry pointing at the **same inode**. The inode's **link
+  count** tracks how many names refer to it; the data is freed only when the count hits zero. All
+  hard links are equal — there's no "original."
+- A **symbolic (soft) link** is a tiny file whose contents are a **path string**. It points at a
+  *name*, not an inode, so it can cross filesystems and can dangle if the target is removed.
+
+<KnowledgeCheck
+  id="fi-link"
+  type="mcq"
+  prompt="What is the difference between a hard link and a symbolic link?"
+  options={[
+    "They are identical",
+    "A hard link is another name for the same inode; a symlink is a file containing a path to another name",
+    "A symlink shares the inode; a hard link stores a path",
+    "Hard links can't be deleted"
+  ]}
+  answer={1}
+  explanation="Hard links share the inode (tracked by link count); symlinks store a path string and can dangle or cross filesystems."
+/>
+
+## Block pointers: direct and indirect
+
+A file's data blocks are referenced by pointers in the inode. To support both small and huge files
+efficiently, classic inodes use a mix:
+
+- **Direct pointers** — point straight at the first few data blocks (fast for small files).
+- **Indirect pointers** — point at a block full of pointers (single indirect), or pointers to
+  pointer-blocks (double/triple indirect) for very large files.
+
+Small files need only direct pointers; large files chain through indirection — a tree that scales
+to huge sizes while keeping small-file access cheap.
+
+<KnowledgeCheck
+  id="fi-indirect"
+  type="mcq"
+  prompt="Why do inodes use indirect block pointers in addition to direct ones?"
+  options={[
+    "To encrypt data",
+    "To support very large files (indirect blocks hold more pointers) while keeping small-file access fast via direct pointers",
+    "To store the file name",
+    "To speed up the CPU"
+  ]}
+  answer={1}
+  explanation="Direct pointers keep small files fast; single/double/triple indirect blocks scale to large files without bloating every inode."
+/>
+
+## Recap
+
+- The inode holds metadata + data-block pointers — but **not** the name.
+- Directories map names → inode numbers; this enables hard links and cheap renames.
+- Path resolution walks component-by-component from the root, lookup then inode read.
+- Hard links share an inode (link count); symlinks store a path. Direct + indirect pointers scale
+  from tiny to huge files.
+
+Next: **The Buffer Cache and LRU** — caching disk blocks in RAM.

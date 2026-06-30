@@ -1,0 +1,108 @@
+# I/O Devices and the Storage Stack
+
+Persistence means surviving a power cycle, which means talking to storage **devices**. Before we
+reach files and inodes, you need a model of how the CPU communicates with devices and what disks
+and SSDs actually cost — because storage latency dwarfs everything and shapes file-system design.
+
+## How the CPU talks to a device
+
+A device exposes a small set of **registers** (status, command, data). The CPU drives it by:
+
+1. Polling the **status** register until the device is ready.
+2. Writing data and a **command** to start an operation.
+3. Waiting for completion.
+
+Step 3 is the expensive part — and how you wait matters.
+
+<KnowledgeCheck
+  id="io-regs"
+  type="mcq"
+  prompt="How does the CPU typically issue a command to a device?"
+  options={[
+    "By calling a function in the device",
+    "By reading/writing the device's status, command, and data registers",
+    "By rebooting",
+    "Devices run on their own with no CPU involvement"
+  ]}
+  answer={1}
+  explanation="Devices expose registers; the CPU checks status, writes data/command, and awaits completion."
+/>
+
+## Polling vs. interrupts vs. DMA
+
+- **Polling**: the CPU loops reading the status register until done. Simple, but **wastes the CPU**
+  spinning during slow I/O.
+- **Interrupts**: the CPU issues the request, then **sleeps/runs other work**; the device raises an
+  **interrupt** when finished. Far better CPU utilization for slow devices (recall ECF). For very
+  fast devices, interrupt overhead can exceed a quick poll — so high-performance NVMe sometimes
+  polls.
+- **DMA (Direct Memory Access)**: a dedicated controller moves data between the device and memory
+  **without the CPU copying each byte**, freeing the CPU entirely during the transfer.
+
+<KnowledgeCheck
+  id="io-dma"
+  type="mcq"
+  prompt="What does DMA (Direct Memory Access) do?"
+  options={[
+    "Polls the device faster",
+    "Transfers data between device and memory without the CPU copying each byte",
+    "Encrypts the data",
+    "Replaces interrupts"
+  ]}
+  answer={1}
+  explanation="DMA offloads the bulk data movement from the CPU, which only sets up the transfer and gets an interrupt on completion."
+/>
+
+## Disks vs. SSDs
+
+- **Hard disk (HDD)**: spinning platters + a moving head. Access time is dominated by **seek**
+  (move the head) + **rotational latency** — milliseconds. **Sequential** access is far faster than
+  **random** because it avoids seeks. This is why file systems try to lay related data
+  contiguously.
+- **SSD (flash)**: no moving parts; random access is ~constant and ~100x faster than HDD random.
+  But flash has quirks: you can't overwrite in place — you erase large **blocks** and write
+  **pages**, causing **write amplification** and the need for wear leveling and garbage collection.
+
+<KnowledgeCheck
+  id="io-hdd"
+  type="mcq"
+  prompt="Why is sequential disk access much faster than random access on an HDD?"
+  options={[
+    "Sequential uses less data",
+    "Random access pays seek + rotational latency repeatedly; sequential avoids head movement",
+    "HDDs can't do random access",
+    "Sequential skips the controller"
+  ]}
+  answer={1}
+  explanation="HDD random access incurs mechanical seek and rotation each time; sequential streams data with minimal head movement."
+/>
+
+<KnowledgeCheck
+  id="io-ssd"
+  type="mcq"
+  prompt="What is write amplification on SSDs?"
+  options={[
+    "Writes become louder",
+    "One logical write triggers extra physical writes (erase-block then rewrite), wearing the flash",
+    "Writes are compressed",
+    "Reads slow down writes"
+  ]}
+  answer={1}
+  explanation="Flash erases in large blocks and writes in pages, so updates can cause extra internal copying/rewriting — write amplification."
+/>
+
+## Why this shapes file systems
+
+Because storage is orders of magnitude slower than RAM (recall the latency ladder), file systems
+obsess over: **caching** in RAM (the buffer cache, next lessons), **batching** and **sequential
+layout** to amortize seeks, and **crash consistency** so a power loss mid-write doesn't corrupt
+data. Every design choice ahead traces back to "the disk is slow and might lose power."
+
+## Recap
+
+- The CPU drives devices via status/command/data registers.
+- Polling wastes CPU on slow I/O; interrupts let it do other work; DMA offloads bulk transfer.
+- HDDs punish random access (seek/rotation); SSDs are fast-random but suffer write amplification.
+- Storage slowness motivates caching, sequential layout, and crash-consistency techniques.
+
+Next: **Files, Directories, and Inodes** — the file system's core data structures.

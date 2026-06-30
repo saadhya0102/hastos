@@ -1,0 +1,24 @@
+Implement an **LRU cache** — one of the most-asked interview problems, and the policy behind the
+OS buffer cache. On overflow, evict the **least-recently-used** entry.
+
+## Your task
+
+In `lru.c`, implement (init provided over caller storage):
+
+```c
+int  lru_get(lru_t *c, int key);             // value, marking it MRU; -1 if absent
+void lru_put(lru_t *c, int key, int value);  // insert/update; evict LRU if full
+```
+
+Recency is tracked with a monotonically increasing `tick`: set `used = ++tick` whenever an entry is
+accessed or inserted; the entry with the **smallest** `used` is the least-recently-used.
+
+## Hints (no spoilers)
+
+- `lru_get`: scan the `size` entries for `key`; if found, bump its `used = ++c->tick` and return its
+  value; otherwise return `-1`.
+- `lru_put`: if the key exists, update its value and recency. Else if there's room, append. Else find
+  the entry with the minimum `used` and overwrite it with the new key/value/recency.
+
+(An O(n) array implementation is fine here; the follow-up is the classic O(1) hash-map + linked-list
+version.) Use **Run** to experiment and **Submit** to grade.

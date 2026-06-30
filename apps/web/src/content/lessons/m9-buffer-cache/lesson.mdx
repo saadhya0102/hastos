@@ -1,0 +1,118 @@
+# The Buffer Cache and LRU
+
+Disk is ~100,000x slower than RAM, so the OS keeps recently-used disk blocks in a RAM **buffer
+cache** (page cache). The same idea — keep a hot subset in fast storage and evict the rest — appears
+at every layer (CPU caches, this cache, CDNs). Here we focus on the **replacement policy** that
+decides what to evict, and implement the classic **LRU** cache.
+
+## Why cache disk blocks
+
+A read that hits the cache costs ~100 ns instead of ~100 µs–10 ms from disk. Because programs have
+strong locality (re-reading inodes, directories, file data), a modest RAM cache absorbs the vast
+majority of reads. The OS uses **most free RAM** as page cache — "unused RAM is wasted RAM."
+
+<KnowledgeCheck
+  id="bc-why"
+  type="mcq"
+  prompt="Why does the OS use spare RAM as a disk (page) cache?"
+  options={[
+    "To use up memory",
+    "Cache hits serve data ~1000x+ faster than disk, and programs re-access blocks (locality)",
+    "Because disks are unreliable",
+    "To speed up the CPU clock"
+  ]}
+  answer={1}
+  explanation="Caching hot blocks in RAM turns slow disk reads into fast memory reads, exploiting locality."
+/>
+
+## LRU: evict the least recently used
+
+When the cache is full and a new block must enter, which one do we evict? **LRU (Least Recently
+Used)** evicts the block that hasn't been accessed for the longest time, betting that recently-used
+data will be used again (temporal locality). It's the standard, strong baseline.
+
+A correct LRU supports two operations:
+
+- `get(key)` → return the value and mark it most-recently-used.
+- `put(key, value)` → insert/update; if over capacity, evict the least-recently-used entry.
+
+The classic O(1) implementation pairs a **hash map** (key → node) with a **doubly linked list**
+ordered by recency: `get`/`put` move the node to the front (most recent); eviction removes the tail
+(least recent).
+
+<KnowledgeCheck
+  id="bc-lru"
+  type="mcq"
+  prompt="What does an LRU cache evict when full?"
+  options={[
+    "A random entry",
+    "The least recently used entry",
+    "The most recently used entry",
+    "The largest entry"
+  ]}
+  answer={1}
+  explanation="LRU evicts the entry unused for the longest time, assuming recent use predicts future use."
+/>
+
+<KnowledgeCheck
+  id="bc-o1"
+  type="mcq"
+  prompt="How does the classic LRU achieve O(1) get and put?"
+  options={[
+    "A sorted array",
+    "A hash map (key->node) plus a doubly linked list ordered by recency",
+    "A single linked list scanned each time",
+    "A binary search tree"
+  ]}
+  answer={1}
+  explanation="The hash map gives O(1) lookup; the doubly linked list gives O(1) move-to-front and tail eviction."
+/>
+
+## Write-back vs. write-through
+
+Caching writes raises a durability question:
+
+- **Write-through**: every write goes to the cache **and** to disk immediately. Safer (data is
+  durable) but slow (disk on every write).
+- **Write-back**: writes update the cache and mark the block **dirty**; the dirty block is flushed
+  to disk later (on eviction or periodically). Fast (absorbs bursts, coalesces writes) but a crash
+  before flush **loses** the buffered writes.
+
+Most systems use write-back for speed and rely on `fsync` and journaling (next lesson) for
+durability when it matters.
+
+<KnowledgeCheck
+  id="bc-wb"
+  type="mcq"
+  prompt="What is the risk of a write-back cache?"
+  options={[
+    "It is always slower",
+    "Buffered (dirty) writes not yet flushed are lost on a crash/power failure",
+    "It can't cache reads",
+    "It corrupts the CPU cache"
+  ]}
+  answer={1}
+  explanation="Write-back defers disk writes for speed, so a crash before the flush loses the buffered data — hence fsync/journaling."
+/>
+
+## Approximating LRU: CLOCK
+
+True LRU requires updating recency on **every** access, which is expensive at OS scale. **CLOCK**
+approximates it cheaply: keep pages in a circle with a **reference bit** set on access. A "hand"
+sweeps; if it finds a page with reference bit 1, it clears it and moves on (second chance); the
+first page it finds with bit 0 is evicted. CLOCK gets near-LRU quality at far lower cost — and
+you'll implement its fault-counting in this module.
+
+## Recap
+
+- The buffer/page cache keeps hot disk blocks in RAM; hits are ~1000x+ faster than disk.
+- LRU evicts the least-recently-used entry; the O(1) design is hash map + doubly linked list.
+- Write-through is safe-but-slow; write-back is fast-but-loses-data-on-crash (needs fsync/journal).
+- CLOCK approximates LRU cheaply using a reference bit and a sweeping hand.
+
+## Practice
+
+Two problems: implement an **LRU cache** (get/put with eviction) and a **CLOCK** page-replacement
+fault counter.
+
+Next: **Journaling and Crash Consistency** — surviving power loss mid-write.
