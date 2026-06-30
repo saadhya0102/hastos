@@ -1,0 +1,111 @@
+# Server Concurrency Models
+
+A real server handles **many clients at once**. How it does so — the concurrency model — determines
+its scalability. This ties together processes (M5), threads (M7), and I/O, and explains how modern
+high-performance servers reach hundreds of thousands of connections.
+
+## Process-per-connection
+
+The oldest model: `accept()` a connection, then `fork()` a child to handle it. Simple and isolated
+(a crash in one child doesn't affect others), but **heavyweight** — each process has its own
+address space; thousands of connections mean thousands of processes, which is memory-hungry and
+context-switch-heavy.
+
+## Thread-per-connection
+
+Spawn a **thread** per connection instead of a process. Cheaper than processes (shared address
+space), and easy to write with blocking I/O (each thread just `read`/`write`s its socket). But it
+still doesn't scale to *hundreds of thousands* of connections — thread stacks and scheduler
+overhead add up, and shared state needs synchronization. A **thread pool** (M7) bounds the cost.
+
+<KnowledgeCheck
+  id="cm-thread"
+  type="mcq"
+  prompt="What's the main drawback of thread-per-connection at very large scale?"
+  options={[
+    "It can't use blocking I/O",
+    "Thousands of thread stacks + scheduler overhead become expensive; it doesn't reach hundreds of thousands of connections well",
+    "Threads can't share memory",
+    "It's impossible to write"
+  ]}
+  answer={1}
+  explanation="Each thread costs a stack and scheduling; at massive connection counts the overhead dominates, motivating event-driven I/O."
+/>
+
+## Event-driven (the event loop)
+
+The scalable model: a **single thread** (or a few) manages **many** connections using
+**non-blocking I/O** and a readiness API. The OS tells you *which* sockets are ready to read/write,
+and you handle just those, never blocking on any one. This is the **event loop**:
+
+```
+register all sockets with epoll
+loop:
+  events = epoll_wait()        // sleep until some sockets are ready
+  for each ready socket:
+    do a non-blocking read/write and advance that connection's state
+```
+
+One thread can juggle tens of thousands of connections because it only does work for sockets that
+are actually ready, and never stalls waiting on a slow client. This is how nginx, Redis, and Node
+achieve their concurrency.
+
+<KnowledgeCheck
+  id="cm-event"
+  type="mcq"
+  prompt="How does an event-driven server handle many connections with one thread?"
+  options={[
+    "It blocks on each socket in turn",
+    "It uses non-blocking I/O + a readiness API (epoll) to process only sockets that are ready, never stalling on one",
+    "It forks a process per socket",
+    "It polls every socket in a tight loop"
+  ]}
+  answer={1}
+  explanation="An event loop waits for readiness (epoll), then services only ready sockets with non-blocking I/O — no per-connection thread, no stalling."
+/>
+
+## epoll vs. select, and C10k
+
+The readiness API matters at scale:
+
+- **`select`/`poll`**: you pass the *entire* set of fds every call, and the kernel scans them all —
+  **O(n)** per call. Fine for a few fds, terrible for many.
+- **`epoll`** (Linux) / **kqueue** (BSD): you register interest once; the kernel returns only the
+  ready fds — effectively **O(1)** in the number of idle connections. This is what made solving the
+  **C10k problem** (10,000 concurrent connections on one machine) practical.
+
+<KnowledgeCheck
+  id="cm-epoll"
+  type="mcq"
+  prompt="Why does epoll scale better than select for many connections?"
+  options={[
+    "epoll uses more CPUs",
+    "select rescans all fds each call (O(n)); epoll registers interest once and returns only ready fds (~O(1))",
+    "epoll compresses data",
+    "select can't handle sockets"
+  ]}
+  answer={1}
+  explanation="select/poll are O(n) per call over all fds; epoll maintains kernel-side interest and reports only ready fds, scaling to huge connection counts."
+/>
+
+## Blocking vs. non-blocking I/O
+
+- **Blocking**: a `read` sleeps until data arrives. Simple, but a thread can serve only one
+  connection at a time while blocked — fine for thread-per-connection.
+- **Non-blocking**: `read` returns immediately (with `EAGAIN` if no data), letting one thread
+  manage many sockets via the event loop. The basis of event-driven servers.
+
+Modern designs often combine them: an event loop per core (e.g., several threads each running their
+own epoll loop), getting both multicore parallelism and per-thread efficiency.
+
+## Recap
+
+- Process-per-connection: isolated but heavy; thread-per-connection: lighter, still limited at huge
+  scale (bound it with a pool).
+- Event-driven (one thread + non-blocking I/O + epoll) scales to hundreds of thousands of
+  connections by servicing only ready sockets.
+- epoll/kqueue beat select/poll (O(1) vs O(n)) — the key to solving C10k.
+- Blocking I/O suits threads; non-blocking I/O powers event loops; real servers often run an event
+  loop per core.
+
+That completes Module M10 — you understand networking from the 5-tuple to scalable server designs.

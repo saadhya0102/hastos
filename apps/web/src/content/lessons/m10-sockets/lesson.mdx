@@ -1,0 +1,125 @@
+# The Socket API
+
+A **socket** is the OS abstraction for a network endpoint — and, conveniently, it's just a **file
+descriptor**, so you read and write it like a file (recall the file-descriptor lesson). The socket
+API is a small, ordered set of system calls; knowing the sequence (and the partial-I/O gotcha) is
+core systems knowledge.
+
+## Sockets are file descriptors
+
+`socket()` returns an `int` fd. After a connection is established, you use `read`/`write` (or
+`recv`/`send`) on that fd, exactly like a pipe or file. This uniformity ("everything is a file
+descriptor") is a hallmark of Unix design — the same `epoll`/`select` machinery works across files,
+pipes, and sockets.
+
+<KnowledgeCheck
+  id="sk-fd"
+  type="mcq"
+  prompt="What is a socket, from the program's perspective?"
+  options={[
+    "A special hardware device",
+    "A file descriptor you read from and write to like a file/pipe",
+    "A function call",
+    "A port number"
+  ]}
+  answer={1}
+  explanation="A socket is an fd; once connected, read/write (or recv/send) move data, like any other descriptor."
+/>
+
+## The server call sequence
+
+A TCP server walks an ordered set of calls:
+
+1. `socket()` — create a socket fd.
+2. `bind()` — attach it to a local address/port.
+3. `listen()` — mark it passive (willing to accept connections); sets a backlog queue.
+4. `accept()` — block until a client connects; returns a **new** fd for that connection (the
+   listening socket keeps accepting others).
+5. `read`/`write` on the connection fd; `close()` when done.
+
+```
+socket -> bind -> listen -> accept (loop) -> read/write -> close
+```
+
+<KnowledgeCheck
+  id="sk-order"
+  type="mcq"
+  prompt="What is the correct order of server socket calls?"
+  options={[
+    "socket, accept, bind, listen",
+    "socket, bind, listen, accept",
+    "bind, socket, listen, accept",
+    "listen, socket, bind, accept"
+  ]}
+  answer={1}
+  explanation="Create (socket), name it (bind), make it passive (listen), then accept connections — each returning a new connection fd."
+/>
+
+## The client call sequence
+
+Simpler: `socket()` then `connect()` to the server's address; then `read`/`write`; then `close()`.
+
+```
+socket -> connect -> read/write -> close
+```
+
+<KnowledgeCheck
+  id="sk-accept"
+  type="mcq"
+  prompt="What does accept() return?"
+  options={[
+    "Nothing",
+    "A new file descriptor for the established connection (the listening socket keeps listening)",
+    "The client's password",
+    "The number of bytes read"
+  ]}
+  answer={1}
+  explanation="accept() yields a fresh connected fd per client; the original listening fd continues accepting more."
+/>
+
+## Partial reads and writes: framing
+
+The crucial gotcha: TCP is a **byte stream**, not a message protocol. A single `write` of 1000
+bytes might be delivered as several `read`s, and one `read` might return fewer bytes than requested
+or coalesce multiple writes. There are **no message boundaries** — TCP guarantees order and
+delivery, not framing.
+
+So you must loop to send/receive exactly N bytes, and define your own **framing** to find message
+boundaries — e.g., a length prefix (`[4-byte length][payload]`) or a delimiter (HTTP uses `\r\n`
+and `Content-Length`). Assuming "one write = one read" is a classic networking bug.
+
+```c
+// read exactly n bytes (handle partial reads):
+ssize_t read_n(int fd, void *buf, size_t n) {
+  size_t got = 0;
+  while (got < n) {
+    ssize_t r = read(fd, (char*)buf + got, n - got);
+    if (r <= 0) return r;   // error or EOF
+    got += r;
+  }
+  return got;
+}
+```
+
+<KnowledgeCheck
+  id="sk-framing"
+  type="mcq"
+  prompt="Why can't you assume one write() corresponds to one read() over TCP?"
+  options={[
+    "Writes are encrypted",
+    "TCP is a byte stream with no message boundaries; data can be split or coalesced, so you must loop and define your own framing",
+    "read() is broken",
+    "TCP drops messages"
+  ]}
+  answer={1}
+  explanation="TCP preserves byte order/delivery but not message boundaries; apps must loop for N bytes and frame messages (length prefix or delimiter)."
+/>
+
+## Recap
+
+- A socket is a file descriptor; use read/write once connected.
+- Server: socket → bind → listen → accept (per-connection fd); client: socket → connect.
+- TCP is a byte stream with no message boundaries — loop for full I/O and define framing (length
+  prefix or delimiter).
+
+Next: **TCP vs. UDP** — the two transport choices.

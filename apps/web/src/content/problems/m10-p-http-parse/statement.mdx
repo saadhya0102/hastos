@@ -1,0 +1,29 @@
+Parse an **HTTP request** — extract the method and target from the request line and count the
+headers. Byte-level protocol parsing is a staple systems-interview task (and a security-sensitive
+one).
+
+## Your task
+
+In `httpparse.c`, implement:
+
+```c
+int http_parse(const char *req, char *method_out, char *path_out);
+```
+
+- Lines end with `\r\n`.
+- The **request line** is `METHOD SP TARGET SP VERSION`, where `VERSION` starts with `HTTP/`.
+- Copy the method into `method_out` and the target into `path_out`.
+- Count the **header lines** (after the request line, up to a blank line) and **return** that count.
+- If the request line is malformed (missing tokens, or version doesn't start with `HTTP/`), return
+  **-1**.
+
+Buffers are large enough (`method_out` ≥ 16, `path_out` ≥ 256).
+
+## Hints (no spoilers)
+
+- Locate the first `\r\n` to isolate the request line, then split it on single spaces.
+- Validate: you need exactly three tokens and a version beginning with `HTTP/`.
+- After the request line, each subsequent non-empty line is a header; stop at the blank line.
+
+Example: `"GET / HTTP/1.1\r\nHost: x\r\n\r\n"` → method `GET`, path `/`, returns `1`. Use **Run**
+then **Submit**.

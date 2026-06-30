@@ -1,0 +1,116 @@
+# HTTP Basics and Parsing
+
+**HTTP** is the application protocol of the web, running over TCP. It's a simple, text-based
+request/response protocol — which makes it a great parsing exercise and a frequent interview task.
+Understanding its structure also reveals why framing (last lessons) matters so much.
+
+## Request structure
+
+An HTTP/1.1 request is text with `\r\n` line endings:
+
+```
+GET /index.html HTTP/1.1\r\n      <- request line: METHOD SP TARGET SP VERSION
+Host: example.com\r\n             <- header: Name: Value
+Accept: text/html\r\n             <- another header
+\r\n                              <- blank line ends the headers
+<optional body>
+```
+
+- The **request line** has three space-separated tokens: method, target (path), version.
+- **Headers** follow, one `Name: Value` per line.
+- A **blank line** (`\r\n` alone) terminates the header section; an optional body follows.
+
+A response mirrors this: a **status line** (`HTTP/1.1 200 OK`), headers, blank line, body.
+
+<KnowledgeCheck
+  id="http-line"
+  type="mcq"
+  prompt="What three tokens make up an HTTP request line?"
+  options={[
+    "Host, Accept, Body",
+    "Method, target (path), and version (e.g., GET /path HTTP/1.1)",
+    "Status, reason, version",
+    "IP, port, protocol"
+  ]}
+  answer={1}
+  explanation="The request line is METHOD SP TARGET SP VERSION, e.g., 'GET /index.html HTTP/1.1'."
+/>
+
+<KnowledgeCheck
+  id="http-blank"
+  type="mcq"
+  prompt="What marks the end of the HTTP header section?"
+  options={[
+    "The first header",
+    "A blank line (an empty CRLF)",
+    "The word END",
+    "The Content-Type header"
+  ]}
+  answer={1}
+  explanation="An empty line (\\r\\n with nothing before it) separates headers from the body."
+/>
+
+## Determining message length
+
+Because TCP has no message boundaries, HTTP must tell the receiver where the body ends:
+
+- **`Content-Length: N`** — exactly N bytes of body follow.
+- **`Transfer-Encoding: chunked`** — the body arrives in size-prefixed chunks, ending with a
+  zero-length chunk (used when the length isn't known up front, e.g., streaming).
+
+Getting this wrong (e.g., trusting one and ignoring the other) leads to **request smuggling**
+vulnerabilities — a real security concern.
+
+<KnowledgeCheck
+  id="http-len"
+  type="mcq"
+  prompt="How does a receiver know how many body bytes to read in HTTP?"
+  options={[
+    "It guesses",
+    "From Content-Length (exact byte count) or chunked transfer-encoding (size-prefixed chunks)",
+    "It reads until the socket closes always",
+    "The method tells it"
+  ]}
+  answer={1}
+  explanation="HTTP signals body length via Content-Length or chunked encoding, since TCP itself has no message boundaries."
+/>
+
+## Methods, status codes, statelessness
+
+- Common **methods**: GET (fetch), POST (submit), PUT (replace), DELETE, HEAD.
+- **Status codes**: 2xx success, 3xx redirect, 4xx client error (404 not found), 5xx server error.
+- HTTP is **stateless** — each request is independent; state is layered on via cookies/tokens. This
+  statelessness is what lets servers scale horizontally (any server can handle any request).
+
+<KnowledgeCheck
+  id="http-stateless"
+  type="mcq"
+  prompt="What does it mean that HTTP is stateless?"
+  options={[
+    "It can't send data",
+    "Each request is independent; the protocol itself keeps no session memory (state is added via cookies/tokens)",
+    "It has no headers",
+    "It only works once"
+  ]}
+  answer={1}
+  explanation="Statelessness means each request stands alone, which simplifies scaling; sessions are layered on top with cookies/tokens."
+/>
+
+## Parsing in practice
+
+A parser reads the request line (split on spaces, validate the version), then reads headers
+line-by-line until the blank line, splitting each on the first `:`. Robustness matters: reject
+malformed request lines, handle missing headers, and never over-read the body. You'll implement a
+request-line + header parser next.
+
+## Recap
+
+- HTTP requests: request line (method/target/version), headers (`Name: Value`), blank line, body.
+- Body length comes from `Content-Length` or chunked encoding — not from TCP.
+- Methods (GET/POST/...), status codes (2xx–5xx), and statelessness (sessions via cookies/tokens).
+
+## Practice
+
+Implement an **HTTP request parser** below (and an **internet checksum** in the sockets problem).
+
+Next: **Server Concurrency Models** — handling many clients at once.

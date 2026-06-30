@@ -1126,6 +1126,69 @@ int main(void) {
 #include "impl.c"
 `;
 
+const HTTPPARSE_HEADER = `#ifndef HTTPPARSE_H
+#define HTTPPARSE_H
+int http_parse(const char *req, char *method_out, char *path_out);
+#endif
+`;
+
+const HTTPPARSE_DRIVER = `#include "httpparse.h"
+#include <stdio.h>
+#include <string.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  char m[16], p[256];
+  { int h = http_parse("GET / HTTP/1.1\\r\\nHost: x\\r\\n\\r\\n", m, p);
+    CHECK("simple", h == 1 && strcmp(m, "GET") == 0 && strcmp(p, "/") == 0, "GET / with 1 header"); }
+  { int h = http_parse("GET /a HTTP/1.1\\r\\nHost: x\\r\\nAccept: y\\r\\n\\r\\n", m, p);
+    CHECK("two_headers", h == 2 && strcmp(m, "GET") == 0 && strcmp(p, "/a") == 0, "two headers, path /a"); }
+  { int h = http_parse("POST /submit HTTP/1.0\\r\\n\\r\\n", m, p);
+    CHECK("post_no_headers", h == 0 && strcmp(m, "POST") == 0 && strcmp(p, "/submit") == 0, "POST, 0 headers"); }
+  { int h = http_parse("GET\\r\\n\\r\\n", m, p); CHECK("malformed_short", h == -1, "missing tokens should be -1"); }
+  { int h = http_parse("GET / FOO\\r\\n\\r\\n", m, p); CHECK("malformed_version", h == -1, "bad version should be -1"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const ICHECKSUM_HEADER = `#ifndef ICHECKSUM_H
+#define ICHECKSUM_H
+unsigned short inet_checksum(const unsigned char *data, int len);
+#endif
+`;
+
+const ICHECKSUM_DRIVER = `#include "ichecksum.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  { unsigned char d[] = {0x12, 0x34}; CHECK("two_bytes", inet_checksum(d, 2) == 0xEDCB, "expected 0xEDCB"); }
+  { unsigned char d[1] = {0}; CHECK("empty", inet_checksum(d, 0) == 0xFFFF, "empty should be 0xFFFF"); }
+  { unsigned char d[] = {0x12, 0x34, 0x56, 0x78}; CHECK("four_bytes", inet_checksum(d, 4) == 0x9753, "expected 0x9753"); }
+  { unsigned char d[] = {0x12, 0x34, 0x56}; CHECK("odd_length", inet_checksum(d, 3) == 0x97CB, "expected 0x97CB"); }
+  { unsigned char d[] = {0xFF, 0xFF, 0xFF, 0xFF}; CHECK("carry_fold", inet_checksum(d, 4) == 0x0000, "expected 0x0000"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -1644,6 +1707,46 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       simple_replace: "hidden",
       hit_then_fault: "hidden",
       loop: "hidden",
+    },
+  },
+
+  "m10-p-http-parse": {
+    id: "m10-p-http-parse",
+    languageId: 50,
+    header: { name: "httpparse.h", content: HTTPPARSE_HEADER },
+    driver: HTTPPARSE_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "httpparse.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      simple: "sample",
+      two_headers: "hidden",
+      post_no_headers: "hidden",
+      malformed_short: "hidden",
+      malformed_version: "hidden",
+    },
+  },
+
+  "m10-p-checksum": {
+    id: "m10-p-checksum",
+    languageId: 50,
+    header: { name: "ichecksum.h", content: ICHECKSUM_HEADER },
+    driver: ICHECKSUM_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "ichecksum.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      two_bytes: "sample",
+      empty: "hidden",
+      four_bytes: "hidden",
+      odd_length: "hidden",
+      carry_fold: "hidden",
     },
   },
 };

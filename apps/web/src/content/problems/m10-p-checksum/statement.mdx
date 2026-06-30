@@ -1,0 +1,24 @@
+Implement the **Internet checksum** (RFC 1071) — the 16-bit one's-complement sum used by IP, TCP,
+and UDP headers. It exercises endianness, carry folding, and bit manipulation together.
+
+## Your task
+
+In `ichecksum.c`, implement:
+
+```c
+unsigned short inet_checksum(const unsigned char *data, int len);
+```
+
+## The algorithm
+
+1. Accumulate 16-bit **big-endian** words into a 32-bit sum: `word = (data[i] << 8) | data[i+1]`.
+2. If `len` is odd, the final word is the last byte shifted left 8 (`data[last] << 8`), low byte 0.
+3. **Fold** carries back in: `while (sum >> 16) sum = (sum & 0xFFFF) + (sum >> 16);`
+4. Return the one's complement: `(unsigned short)(~sum)`.
+
+## Hints (no spoilers)
+
+- Use a `uint32_t` accumulator so carries aren't lost mid-sum.
+- An empty buffer (`len == 0`) sums to 0, so the result is `~0 = 0xFFFF`.
+
+Examples: `{0x12,0x34}` → `0xEDCB`; `{0xFF,0xFF,0xFF,0xFF}` → `0x0000`. Use **Run** then **Submit**.

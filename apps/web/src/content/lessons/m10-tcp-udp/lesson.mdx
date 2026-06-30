@@ -1,0 +1,111 @@
+# TCP vs. UDP
+
+The two transport protocols sit on top of IP and offer opposite trade-offs. **TCP** is a reliable,
+ordered, connection-oriented byte stream; **UDP** is a thin, best-effort, message-oriented layer.
+Choosing correctly — and knowing TCP's mechanisms — is essential systems and interview knowledge.
+
+## TCP: reliable, ordered, connection-oriented
+
+TCP guarantees that bytes arrive **in order**, **without loss or duplication**, on an established
+**connection**. It achieves this with sequence numbers, acknowledgments, retransmission of lost
+segments, and checksums. You get a clean byte stream — at the cost of connection setup, per-segment
+acknowledgment overhead, and head-of-line blocking.
+
+## UDP: best-effort datagrams
+
+UDP just sends **datagrams** (messages) with almost no machinery: no connection, no ordering, no
+retransmission, no congestion control. A datagram may be lost, duplicated, or arrive out of order.
+In exchange you get low overhead and latency, and message boundaries are preserved (one `sendto` =
+one `recvfrom`). Apps that need reliability build it themselves on top (e.g., QUIC, game netcode).
+
+<KnowledgeCheck
+  id="tu-diff"
+  type="mcq"
+  prompt="Which is true of UDP compared to TCP?"
+  options={[
+    "UDP guarantees in-order delivery",
+    "UDP is best-effort: no connection, ordering, or retransmission, but low overhead and preserved message boundaries",
+    "UDP is always slower",
+    "UDP can't lose packets"
+  ]}
+  answer={1}
+  explanation="UDP is a thin best-effort datagram layer (no reliability/ordering) with message boundaries; TCP adds reliability/ordering at higher cost."
+/>
+
+## The TCP handshake and teardown
+
+A TCP connection opens with a **three-way handshake**:
+
+```
+client -> SYN ->         server
+client <- SYN-ACK <-     server
+client -> ACK ->         server   (connection established)
+```
+
+It closes with a four-way FIN/ACK exchange (each side closes its half), often leaving the initiator
+in **TIME_WAIT** briefly to ensure stray packets drain.
+
+<KnowledgeCheck
+  id="tu-handshake"
+  type="mcq"
+  prompt="What are the steps of the TCP connection handshake?"
+  options={[
+    "ACK, SYN, FIN",
+    "SYN, SYN-ACK, ACK (three-way)",
+    "SYN, ACK (two-way)",
+    "FIN, FIN-ACK"
+  ]}
+  answer={1}
+  explanation="TCP opens with a three-way handshake: SYN, SYN-ACK, ACK; it closes with a four-way FIN/ACK exchange."
+/>
+
+## Flow control, congestion control, and Nagle
+
+- **Flow control** (receiver-driven): the receiver advertises a **window** of how much it can
+  buffer, so a fast sender won't overwhelm a slow receiver.
+- **Congestion control** (network-driven): TCP probes available bandwidth (slow start, congestion
+  avoidance) and backs off on loss, sharing the network fairly.
+- **Nagle's algorithm**: coalesces small writes into fewer packets to reduce overhead — but can add
+  latency for interactive/small-message workloads. Disable it with `TCP_NODELAY` when latency
+  matters.
+
+<KnowledgeCheck
+  id="tu-nagle"
+  type="mcq"
+  prompt="What does Nagle's algorithm do, and when do you disable it?"
+  options={[
+    "Encrypts data; never disable",
+    "Coalesces small writes to reduce packet overhead; disable with TCP_NODELAY for latency-sensitive workloads",
+    "Speeds up the handshake",
+    "Controls congestion"
+  ]}
+  answer={1}
+  explanation="Nagle batches small sends to cut overhead but adds latency; TCP_NODELAY turns it off for interactive traffic."
+/>
+
+## Choosing a transport
+
+- **TCP**: when you need reliability and ordering — web, APIs, file transfer, databases.
+- **UDP**: when low latency beats reliability, or you'll build your own reliability — DNS, video/
+  voice, gaming, QUIC/HTTP-3.
+
+<KnowledgeCheck
+  id="tu-choose"
+  type="mcq"
+  prompt="For real-time voice/video where occasional loss is tolerable but latency must be low, which transport fits?"
+  options={["TCP", "UDP", "Neither", "Both are identical"]}
+  answer={1}
+  explanation="UDP's low overhead/latency suits real-time media; retransmitting stale audio (as TCP would) is worse than dropping it."
+/>
+
+## Recap
+
+- TCP: reliable, ordered, connection-oriented byte stream (handshake, ACKs, retransmit) — higher
+  overhead.
+- UDP: best-effort datagrams, message boundaries, minimal overhead — build reliability yourself if
+  needed.
+- TCP adds flow control (window), congestion control (slow start/backoff), and Nagle (disable with
+  TCP_NODELAY for latency).
+- Pick TCP for correctness-critical streams, UDP for latency-critical/loss-tolerant traffic.
+
+Next: **HTTP Basics and Parsing** — an application protocol over TCP.

@@ -1,0 +1,87 @@
+# The Client-Server Model
+
+Networking lets programs on different machines communicate. The dominant pattern is
+**client-server**: a long-running **server** waits for requests; **clients** initiate connections
+and ask for work. The web, databases, and most distributed systems are built on it.
+
+## Roles
+
+- A **server** binds to a known address/port and **listens**, accepting incoming connections and
+  responding to requests. It's reactive — it waits.
+- A **client** knows the server's address and **initiates** a connection, sends requests, reads
+  responses. It's proactive.
+
+The same machine can be both (e.g., a web server is a client to its database). "Client" and
+"server" describe *roles in an interaction*, not fixed machine types.
+
+<KnowledgeCheck
+  id="cs-roles"
+  type="mcq"
+  prompt="What distinguishes a server from a client in the client-server model?"
+  options={[
+    "Servers are always faster",
+    "A server listens and waits for incoming connections; a client initiates them",
+    "Clients have no network",
+    "Servers can't be clients"
+  ]}
+  answer={1}
+  explanation="The server passively listens/accepts; the client actively initiates. A program can play both roles in different interactions."
+/>
+
+## Addresses, ports, and the stack
+
+- An **IP address** identifies a host on the network (e.g., `93.184.216.34`, or an IPv6 address).
+- A **port** (0–65535) identifies a specific service/socket on that host (HTTP = 80, HTTPS = 443).
+- The **protocol stack** layers: application (HTTP) over transport (TCP/UDP) over network (IP) over
+  link (Ethernet/Wi-Fi). Each layer wraps the one above with its own header.
+
+So "connect to example.com:443" means: resolve the name to an IP, then open a transport connection
+to port 443 on that host.
+
+<KnowledgeCheck
+  id="cs-port"
+  type="mcq"
+  prompt="What does a port number identify?"
+  options={[
+    "A physical cable",
+    "A specific service/socket on a host (so one machine can run many services)",
+    "The host itself",
+    "The protocol version"
+  ]}
+  answer={1}
+  explanation="The IP identifies the host; the port selects which service/socket on it, letting one machine serve many ports."
+/>
+
+## Identifying a connection: the 5-tuple
+
+A single server port (say 443) handles thousands of simultaneous clients. How does the OS keep
+them separate? Each connection is uniquely identified by a **5-tuple**:
+
+```
+(protocol, source IP, source port, destination IP, destination port)
+```
+
+Two clients hitting the same server port differ in their source IP/port, so their connections are
+distinct. This is why one listening socket can fan out to many connected sockets.
+
+<KnowledgeCheck
+  id="cs-tuple"
+  type="mcq"
+  prompt="How can one server port serve thousands of distinct connections at once?"
+  options={[
+    "It can't; one port = one connection",
+    "Each connection is identified by the unique 5-tuple (protocol, src IP, src port, dst IP, dst port)",
+    "By using many CPUs",
+    "By switching ports each time"
+  ]}
+  answer={1}
+  explanation="Connections are demultiplexed by the full 5-tuple, so many clients can share one server port."
+/>
+
+## Recap
+
+- Client-server: servers listen/accept; clients initiate. Roles, not machine types.
+- IP addresses identify hosts; ports identify services; protocols layer (HTTP/TCP/IP/link).
+- Connections are demultiplexed by the 5-tuple, so one port serves many clients.
+
+Next: **The Socket API** — the system calls that make this happen.
