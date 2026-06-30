@@ -1189,6 +1189,82 @@ int main(void) {
 #include "impl.c"
 `;
 
+const BTREESEARCH_HEADER = `#ifndef BTREESEARCH_H
+#define BTREESEARCH_H
+int node_lower_bound(const int *keys, int n, int target);
+#endif
+`;
+
+const BTREESEARCH_DRIVER = `#include "btreesearch.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  { int k[] = {10, 20, 30}; CHECK("exact", node_lower_bound(k, 3, 20) == 1, "first >=20 should be index 1"); }
+  { int k[] = {10, 20, 30}; CHECK("between", node_lower_bound(k, 3, 15) == 1, "first >=15 should be index 1"); }
+  { int k[] = {10, 20, 30}; CHECK("before_all", node_lower_bound(k, 3, 5) == 0, "first >=5 should be index 0"); }
+  { int k[] = {10, 20, 30}; CHECK("after_all", node_lower_bound(k, 3, 40) == 3, "all < 40 should return n=3"); }
+  { int k[1000]; for (int i = 0; i < 1000; i++) k[i] = 2 * i; CHECK("large", node_lower_bound(k, 1000, 1001) == 501, "first >=1001 should be index 501"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const LSMMERGE_HEADER = `#ifndef LSMMERGE_H
+#define LSMMERGE_H
+int lsm_merge(const int *k1, const int *v1, int n1,
+              const int *k2, const int *v2, int n2,
+              int *ko, int *vo);
+#endif
+`;
+
+const LSMMERGE_DRIVER = `#include "lsmmerge.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+static int eq(const int *a, const int *b, int n) { for (int i = 0; i < n; i++) if (a[i] != b[i]) return 0; return 1; }
+
+int main(void) {
+  { int k1[] = {1, 3}, v1[] = {10, 30}, k2[] = {2, 4}, v2[] = {20, 40}; int ko[4], vo[4];
+    int n = lsm_merge(k1, v1, 2, k2, v2, 2, ko, vo);
+    int ek[] = {1, 2, 3, 4}, ev[] = {10, 20, 30, 40};
+    CHECK("disjoint", n == 4 && eq(ko, ek, 4) && eq(vo, ev, 4), "disjoint merge failed"); }
+  { int k1[] = {1, 2, 3}, v1[] = {10, 20, 30}, k2[] = {2}, v2[] = {99}; int ko[3], vo[3];
+    int n = lsm_merge(k1, v1, 3, k2, v2, 1, ko, vo);
+    int ek[] = {1, 2, 3}, ev[] = {10, 99, 30};
+    CHECK("overlap_newer_wins", n == 3 && eq(ko, ek, 3) && eq(vo, ev, 3), "newer value should win on key 2"); }
+  { int k2[] = {1, 2}, v2[] = {1, 2}; int ko[2], vo[2];
+    int n = lsm_merge(0, 0, 0, k2, v2, 2, ko, vo);
+    int ek[] = {1, 2}, ev[] = {1, 2};
+    CHECK("empty_a", n == 2 && eq(ko, ek, 2) && eq(vo, ev, 2), "empty run A failed"); }
+  { int k1[] = {5}, v1[] = {50}; int ko[1], vo[1];
+    int n = lsm_merge(k1, v1, 1, 0, 0, 0, ko, vo);
+    CHECK("empty_b", n == 1 && ko[0] == 5 && vo[0] == 50, "empty run B failed"); }
+  { int k1[] = {1, 2}, v1[] = {1, 2}, k2[] = {1, 2}, v2[] = {9, 8}; int ko[2], vo[2];
+    int n = lsm_merge(k1, v1, 2, k2, v2, 2, ko, vo);
+    int ek[] = {1, 2}, ev[] = {9, 8};
+    CHECK("all_overlap", n == 2 && eq(ko, ek, 2) && eq(vo, ev, 2), "all-overlap newer wins failed"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -1747,6 +1823,46 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       four_bytes: "hidden",
       odd_length: "hidden",
       carry_fold: "hidden",
+    },
+  },
+
+  "m11-p-btree-search": {
+    id: "m11-p-btree-search",
+    languageId: 50,
+    header: { name: "btreesearch.h", content: BTREESEARCH_HEADER },
+    driver: BTREESEARCH_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "btreesearch.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      exact: "sample",
+      between: "hidden",
+      before_all: "hidden",
+      after_all: "hidden",
+      large: "hidden",
+    },
+  },
+
+  "m11-p-lsm-merge": {
+    id: "m11-p-lsm-merge",
+    languageId: 50,
+    header: { name: "lsmmerge.h", content: LSMMERGE_HEADER },
+    driver: LSMMERGE_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "lsmmerge.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      disjoint: "sample",
+      overlap_newer_wins: "hidden",
+      empty_a: "hidden",
+      empty_b: "hidden",
+      all_overlap: "hidden",
     },
   },
 };

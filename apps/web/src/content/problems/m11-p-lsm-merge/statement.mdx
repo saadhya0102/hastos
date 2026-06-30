@@ -1,0 +1,27 @@
+Implement the heart of **LSM compaction**: merge two sorted runs into one, where the **newer** run
+wins on duplicate keys. This is the two-way case of the k-way merge that powers LevelDB/RocksDB
+compaction.
+
+## Your task
+
+In `lsmmerge.c`, implement:
+
+```c
+int lsm_merge(const int *k1, const int *v1, int n1,
+              const int *k2, const int *v2, int n2,
+              int *ko, int *vo);
+```
+
+Both runs are sorted ascending with unique keys. Run **2 is newer**. Produce the merged, sorted,
+unique key/value sequence in `ko[]`/`vo[]` and return its length. When a key is in **both** runs,
+keep the value from **run 2**.
+
+## Hints (no spoilers)
+
+- Two-pointer merge (`i` over run 1, `j` over run 2):
+  - if `k1[i] < k2[j]` → emit `(k1[i], v1[i])`, advance `i`.
+  - if `k1[i] > k2[j]` → emit `(k2[j], v2[j])`, advance `j`.
+  - if equal → emit `(k2[j], v2[j])` (newer wins) and advance **both**.
+- Drain whatever run remains when the other is exhausted.
+
+Example: A `{1:10, 2:20, 3:30}`, B `{2:99}` → `{1:10, 2:99, 3:30}`. Use **Run** then **Submit**.

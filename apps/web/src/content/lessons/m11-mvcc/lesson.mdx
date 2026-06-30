@@ -1,0 +1,105 @@
+# MVCC and Isolation
+
+Databases must let many transactions run **concurrently** while each sees a **consistent** view of
+the data. **Multi-Version Concurrency Control (MVCC)** is the dominant technique: instead of locking
+readers out, the database keeps **multiple versions** of each row so readers and writers rarely
+block each other. This connects the concurrency module to real database design.
+
+## The problem: readers vs. writers
+
+With simple locking, a long-running read query would block writers (or vice versa), killing
+concurrency. We want: **readers never block writers, and writers never block readers**, while each
+transaction still sees a coherent snapshot — not a half-applied mix of others' changes.
+
+<KnowledgeCheck
+  id="mv-problem"
+  type="mcq"
+  prompt="What concurrency goal does MVCC aim for?"
+  options={[
+    "Only one transaction at a time",
+    "Readers don't block writers and writers don't block readers, while each sees a consistent snapshot",
+    "No transactions at all",
+    "Locking every row"
+  ]}
+  answer={1}
+  explanation="MVCC lets reads and writes proceed concurrently by serving readers a consistent snapshot from versioned data."
+/>
+
+## The idea: keep multiple versions
+
+When a transaction updates a row, MVCC doesn't overwrite it in place — it writes a **new version**
+tagged with the transaction's timestamp/id, leaving the old version intact. Each row effectively has
+a chain of versions over time.
+
+A transaction reads as of a **snapshot** (a point in time): for each row, it sees the **latest
+version that was committed before its snapshot** — ignoring versions created by transactions that
+hadn't committed yet. So a reader gets a stable, consistent view even as writers create newer
+versions concurrently.
+
+<KnowledgeCheck
+  id="mv-version"
+  type="mcq"
+  prompt="Under MVCC, what does a transaction read for a given row?"
+  options={[
+    "Always the absolute latest value",
+    "The latest version committed before its snapshot (older concurrent/uncommitted versions are invisible)",
+    "A random version",
+    "Nothing until it commits"
+  ]}
+  answer={1}
+  explanation="Each transaction sees a consistent snapshot: the newest version committed as of its start, not later/uncommitted writes."
+/>
+
+## Snapshot isolation
+
+The isolation level MVCC naturally provides is **snapshot isolation**: each transaction operates
+against a frozen snapshot from its start. Reads are repeatable and never see partial updates. It's
+strong and cheap, though not fully serializable — the classic gap is **write skew**, where two
+transactions read overlapping data and make disjoint writes that together violate an invariant
+(serializable MVCC adds extra checks to catch this).
+
+<KnowledgeCheck
+  id="mv-si"
+  type="mcq"
+  prompt="What isolation does basic MVCC provide, and what's its known limitation?"
+  options={[
+    "Serializable, with no limitations",
+    "Snapshot isolation — consistent per-transaction snapshots — but susceptible to write skew (not fully serializable)",
+    "No isolation",
+    "Read uncommitted only"
+  ]}
+  answer={1}
+  explanation="MVCC gives snapshot isolation (stable snapshots, no dirty/non-repeatable reads) but can allow write skew unless made serializable."
+/>
+
+## Garbage collection of old versions
+
+Keeping every version forever wastes space, so the database **reclaims** versions no longer visible
+to any active transaction (e.g., PostgreSQL's `VACUUM`). This is **space amplification** in action —
+the cost MVCC pays for non-blocking concurrency, analogous to LSM compaction reclaiming overwritten
+keys.
+
+<KnowledgeCheck
+  id="mv-gc"
+  type="mcq"
+  prompt="Why must MVCC databases garbage-collect old row versions?"
+  options={[
+    "To slow down reads",
+    "Old versions consume space; once no active transaction can see them, they're reclaimed (e.g., VACUUM)",
+    "To break isolation",
+    "Versions never accumulate"
+  ]}
+  answer={1}
+  explanation="Obsolete versions invisible to all live transactions are reclaimed to bound space amplification."
+/>
+
+## Recap
+
+- MVCC keeps multiple timestamped versions so readers and writers don't block each other.
+- A transaction reads the latest version committed before its snapshot → snapshot isolation.
+- Snapshot isolation prevents dirty/non-repeatable reads but allows write skew (serializable adds
+  checks).
+- Old versions are garbage-collected (e.g., VACUUM) to bound space amplification.
+
+That completes Module M11 — you understand the storage engines and concurrency control behind real
+databases, and can implement B-tree search and LSM merge.

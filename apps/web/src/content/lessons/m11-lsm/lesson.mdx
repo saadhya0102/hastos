@@ -1,0 +1,123 @@
+# LSM-Trees and Compaction
+
+The **log-structured merge-tree (LSM)** is the write-optimized storage engine behind LevelDB,
+RocksDB, Cassandra, and many modern databases. It turns random writes into fast sequential ones by
+buffering in memory and flushing sorted runs, then merging them in the background. Its centerpiece
+operation — **merging sorted runs** — is what you'll implement.
+
+## The write path
+
+1. A write goes to an in-memory sorted structure, the **memtable** (e.g., a balanced tree or skip
+   list), and is also appended to a **write-ahead log** (for durability — recall M9).
+2. When the memtable fills, it's **flushed** to disk as an immutable, sorted file: an **SSTable**
+   (Sorted String Table). Flushing is a single **sequential** write — fast.
+3. Over time, many SSTables accumulate (across levels).
+
+Because writes are buffered and flushed sequentially, LSM write throughput is excellent — the big
+advantage over B-trees' in-place random writes.
+
+<KnowledgeCheck
+  id="lsm-write"
+  type="mcq"
+  prompt="How does an LSM-tree make writes fast?"
+  options={[
+    "It writes randomly in place",
+    "It buffers writes in an in-memory memtable, then flushes them as sorted SSTables with sequential I/O",
+    "It avoids durability",
+    "It uses a B-tree per write"
+  ]}
+  answer={1}
+  explanation="LSM absorbs writes in memory (memtable + WAL) and flushes sorted runs sequentially — turning random writes into sequential ones."
+/>
+
+## The read path and bloom filters
+
+A read must consider the memtable **and** potentially several SSTables (newest first, since newer
+data overrides older). Checking many files would be slow — **read amplification**. Two mitigations:
+
+- Each SSTable is **sorted** (binary search within it) with a sparse index.
+- A **bloom filter** per SSTable answers "is this key *definitely not* here?" cheaply, so reads skip
+  SSTables that can't contain the key. (Bloom filters have false positives but no false negatives.)
+
+<KnowledgeCheck
+  id="lsm-bloom"
+  type="mcq"
+  prompt="Why do LSM engines keep a bloom filter per SSTable?"
+  options={[
+    "To compress data",
+    "To quickly skip SSTables that definitely don't contain a key, cutting read amplification",
+    "To order the writes",
+    "To replace the memtable"
+  ]}
+  answer={1}
+  explanation="A bloom filter cheaply rules out keys (no false negatives), so reads avoid scanning SSTables that can't hold the key."
+/>
+
+## Compaction: merging sorted runs
+
+To stop SSTables from piling up (and to reclaim space from overwritten/deleted keys), a background
+process called **compaction** **merges** multiple sorted SSTables into fewer, larger ones. The core
+of compaction is a **k-way merge of sorted runs**: walk the inputs in key order, and when the same
+key appears in multiple runs, **keep the newest version** (and drop tombstoned deletes).
+
+```
+run A (older): a=1, c=3, e=5
+run B (newer): b=2, c=9, d=4
+merged (newer wins on c): a=1, b=2, c=9, d=4, e=5
+```
+
+Compaction is where LSM's **write amplification** comes from — data is rewritten as it moves
+through levels — the cost paid for fast writes and good space use.
+
+<KnowledgeCheck
+  id="lsm-merge"
+  type="mcq"
+  prompt="During compaction, when the same key appears in two runs, which value is kept?"
+  options={[
+    "The older one",
+    "The newer one (and tombstoned/deleted keys are dropped)",
+    "Both",
+    "Neither"
+  ]}
+  answer={1}
+  explanation="Merging sorted runs keeps the most recent version of each key (newer overrides older), discarding obsolete and deleted entries."
+/>
+
+## LSM vs. B-tree trade-offs
+
+- **LSM**: excellent write throughput (sequential), good compression/space; higher read
+  amplification (mitigated by bloom filters) and background compaction CPU/IO.
+- **B-tree**: excellent reads and range scans, predictable; higher write amplification (in-place
+  page rewrites, random writes).
+
+Write-heavy workloads (logging, time-series, ingestion) favor LSM; read-heavy/transactional
+workloads often favor B-trees. Many systems offer both.
+
+<KnowledgeCheck
+  id="lsm-tradeoff"
+  type="mcq"
+  prompt="Which workload most favors an LSM-tree over a B-tree?"
+  options={[
+    "Read-mostly transactional queries",
+    "Write-heavy ingestion (logs, time-series) where sequential write throughput matters",
+    "Tiny datasets",
+    "Workloads needing no durability"
+  ]}
+  answer={1}
+  explanation="LSM's sequential, buffered writes excel at high write volume; B-trees shine for read-heavy/transactional access."
+/>
+
+## Recap
+
+- LSM write path: memtable (+ WAL) → flush sorted SSTables sequentially → many runs accumulate.
+- Reads check memtable + SSTables newest-first; bloom filters skip irrelevant SSTables.
+- Compaction merges sorted runs (newest key wins, drop tombstones) — the source of write
+  amplification.
+- LSM = write-optimized; B-tree = read-optimized. Choose by workload.
+
+## Practice
+
+Implement the heart of compaction — **merge two sorted runs, newer wins on duplicates** — in the
+problem below.
+
+Next: **MVCC and Isolation** — how databases let readers and writers coexist.

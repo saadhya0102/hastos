@@ -1,0 +1,21 @@
+Implement the core step of a **B-tree search**: a **lower-bound binary search** within a sorted
+node. Given the node's sorted keys, find where a target fits — which key/child to consider next.
+
+## Your task
+
+In `btreesearch.c`, implement:
+
+```c
+int node_lower_bound(const int *keys, int n, int target);
+```
+
+Return the index of the **first** key that is `>= target`, or `n` if every key is `< target`. Must
+be **O(log n)**.
+
+## Hints (no spoilers)
+
+- Classic lower-bound: `lo = 0, hi = n; while (lo < hi) { mid = lo + (hi-lo)/2; if (keys[mid] < target) lo = mid+1; else hi = mid; } return lo;`
+- Use `lo + (hi-lo)/2` (not `(lo+hi)/2`) to avoid overflow on large inputs.
+
+Examples: keys `[10,20,30]`, target `15` → `1`; target `40` → `3`; target `5` → `0`. Use **Run**
+then **Submit**.

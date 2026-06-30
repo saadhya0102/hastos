@@ -1,0 +1,121 @@
+# B-Trees
+
+The **B-tree** is the read-optimized index behind most relational databases and many file systems.
+It keeps keys **sorted** in a balanced, shallow tree of disk **pages**, so any key is found in a
+handful of page reads. Understanding its search and split operations is essential storage knowledge
+and a common interview topic.
+
+## Structure: shallow because of high fanout
+
+A B-tree node is a disk page holding many **sorted keys** and pointers to **children** (one more
+child than keys). Because each node has high **fanout** (hundreds of keys per page), the tree is
+extremely **shallow**: even billions of keys fit in 3–4 levels.
+
+```
+node: [ k0 k1 k2 ... ]  with children c0 c1 c2 c3 ...
+      keys in c0 < k0 < keys in c1 < k1 < keys in c2 < ...
+```
+
+Shallowness is the whole point: tree height ≈ log_fanout(N), and each level is one slow page read,
+so high fanout minimizes disk I/O per lookup.
+
+<KnowledgeCheck
+  id="bt-fanout"
+  type="mcq"
+  prompt="Why do databases favor B-trees with high fanout for on-disk indexes?"
+  options={[
+    "They use less code",
+    "High fanout keeps the tree shallow, so a lookup needs only a few (slow) page reads",
+    "They avoid sorting",
+    "They never need balancing"
+  ]}
+  answer={1}
+  explanation="Many keys per node means few levels (log_fanout N); since each level is a disk read, shallow trees minimize I/O."
+/>
+
+## Search
+
+Searching is a descent guided by binary search within each node:
+
+1. In the current node, find where the target fits among the sorted keys (binary search).
+2. If a key equals the target, done.
+3. Otherwise descend into the child between the surrounding keys.
+4. Repeat until found or you reach a leaf.
+
+The "where does the target fit" step is exactly a **lower bound** (first key ≥ target), which gives
+the child index to follow. You'll implement that core step.
+
+<KnowledgeCheck
+  id="bt-search"
+  type="mcq"
+  prompt="Within a B-tree node, how do you decide which child to descend into?"
+  options={[
+    "Always the leftmost child",
+    "Binary-search the sorted keys for where the target fits (lower bound); descend into the child at that position",
+    "Random child",
+    "Scan all children"
+  ]}
+  answer={1}
+  explanation="A lower-bound binary search finds the gap the target belongs to, selecting the child pointer to follow."
+/>
+
+## Insertion with splitting
+
+Inserts keep the tree balanced via **splitting**:
+
+1. Descend to the correct **leaf** and insert the key in sorted order.
+2. If the node now exceeds capacity (overfull), **split** it: the median key moves **up** into the
+   parent, and the node divides into two half-full nodes.
+3. A split can cascade: if the parent overflows, it splits too — possibly up to the root, which
+   grows the tree by one level.
+
+Splitting keeps every leaf at the same depth (perfect balance) and every node at least half full,
+guaranteeing O(log N) operations.
+
+<KnowledgeCheck
+  id="bt-split"
+  type="mcq"
+  prompt="When a B-tree node overflows on insert, what happens?"
+  options={[
+    "The tree is rebuilt from scratch",
+    "The node splits; its median key moves up to the parent, possibly cascading splits up to the root",
+    "The insert is rejected",
+    "The node is deleted"
+  ]}
+  answer={1}
+  explanation="Overfull nodes split, pushing the median up; cascading splits to the root keep the tree balanced and uniformly deep."
+/>
+
+## Why pages, in place
+
+B-trees are tuned for storage: node size = disk/SSD **page** size, so each node read/write is one
+I/O. Updates happen **in place** (rewrite the page), which gives great reads and range scans (keys
+are sorted and clustered) but causes random writes and write amplification (rewriting full pages
+for small changes) — the trade-off versus LSM-trees, next.
+
+<KnowledgeCheck
+  id="bt-place"
+  type="mcq"
+  prompt="What is a downside of B-trees' in-place page updates?"
+  options={[
+    "Reads become slow",
+    "Small logical updates can rewrite whole pages (write amplification) and cause random writes",
+    "Keys become unsorted",
+    "The tree becomes unbalanced"
+  ]}
+  answer={1}
+  explanation="In-place updates rewrite full pages and do random I/O, raising write amplification — the cost B-trees pay for fast reads."
+/>
+
+## Recap
+
+- B-trees store sorted keys in shallow, high-fanout pages → few page reads per lookup.
+- Search = binary-search (lower bound) within a node, then descend; O(log N).
+- Insert into a leaf; split overfull nodes, pushing the median up (cascades keep balance).
+- Page-sized nodes + in-place updates give fast reads/scans but write amplification.
+
+## Practice
+
+Implement the B-tree node search step — a **lower-bound binary search** — in the problem below.
+
+Next: **LSM-Trees** — the write-optimized alternative.

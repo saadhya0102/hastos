@@ -1,0 +1,98 @@
+# Key-Value Stores and Indexing
+
+At the bottom of every database is a **storage engine** that maps **keys to values** on durable
+storage. Understanding how it indexes data — and the amplification trade-offs — explains why
+databases choose B-trees or LSM-trees, and prepares you to implement both.
+
+## The key-value model
+
+The core API is tiny:
+
+- `put(key, value)` — store/overwrite.
+- `get(key)` — retrieve.
+- `delete(key)` — remove.
+- often `scan(range)` — iterate keys in order.
+
+Everything else (SQL, documents, secondary indexes) is built atop this. The hard part isn't the
+API; it's doing it **fast and durably** over slow storage.
+
+<KnowledgeCheck
+  id="kv-api"
+  type="mcq"
+  prompt="What is the core abstraction a storage engine provides?"
+  options={[
+    "A network protocol",
+    "A durable map from keys to values (put/get/delete, often ordered scan)",
+    "A thread pool",
+    "A compiler"
+  ]}
+  answer={1}
+  explanation="Storage engines implement a durable key-value map; higher-level databases build on this foundation."
+/>
+
+## Why an index
+
+The naive store — an append-only log of `(key, value)` records — makes `put` trivially fast
+(append) but `get` O(n) (scan the whole log). An **index** is an auxiliary data structure that maps
+a key to the **location** of its value, turning `get` into O(log n) or O(1). But the index must be
+**maintained on every write**, so it trades write cost for read speed. The whole field is about
+choosing that trade-off well.
+
+<KnowledgeCheck
+  id="kv-index"
+  type="mcq"
+  prompt="What is the fundamental trade-off an index introduces?"
+  options={[
+    "It makes everything slower",
+    "Faster reads (locate keys quickly) at the cost of extra work to maintain the index on every write",
+    "It removes the need for storage",
+    "It only helps deletes"
+  ]}
+  answer={1}
+  explanation="Indexes speed up reads but must be updated on writes — the read/write cost trade-off at the heart of storage engines."
+/>
+
+## Amplification: the key metrics
+
+Storage engines are judged by three "amplifications":
+
+- **Read amplification** — extra reads per logical read (e.g., checking several files/levels).
+- **Write amplification** — extra bytes written per logical write (e.g., rewriting during
+  compaction, or B-tree page rewrites).
+- **Space amplification** — extra storage used (e.g., obsolete versions awaiting compaction).
+
+No design wins all three; engines pick a point on this triangle. **B-trees** optimize reads;
+**LSM-trees** optimize writes. The next lessons examine each.
+
+<KnowledgeCheck
+  id="kv-amp"
+  type="mcq"
+  prompt="What is write amplification in a storage engine?"
+  options={[
+    "Reads becoming writes",
+    "Extra bytes physically written per logical write (e.g., due to compaction or page rewrites)",
+    "The index growing",
+    "Network overhead"
+  ]}
+  answer={1}
+  explanation="Write amplification measures the extra physical writes caused by maintaining the on-disk structure (compaction, rewrites)."
+/>
+
+## Read- vs. write-optimized
+
+- **Read-optimized (B-tree)**: data kept sorted in a balanced on-disk tree; a read is a few page
+  fetches. Writes update pages in place (random writes, page rewrites) — higher write cost.
+- **Write-optimized (LSM-tree)**: writes are buffered in memory and flushed as sorted runs
+  (sequential writes); reads may consult several runs (higher read amplification, mitigated by
+  bloom filters), and background **compaction** merges runs.
+
+The right choice depends on your read/write ratio — a recurring systems decision.
+
+## Recap
+
+- A storage engine is a durable key-value map; indexes trade write cost for read speed.
+- Designs are judged by read/write/space amplification — you can't minimize all three.
+- B-trees are read-optimized (in-place, sorted); LSM-trees are write-optimized (buffer + flush +
+  compact).
+
+Next: **B-Trees** — the read-optimized workhorse.
