@@ -1,0 +1,27 @@
+Implement the core decision a linker makes when resolving a single global symbol with possibly
+several definitions across object files. This encodes the **strong/weak resolution rules** from
+the lesson — a favorite "do you actually understand linking?" interview probe.
+
+## Your task
+
+In `symresolve.c`, implement:
+
+```c
+int resolve_symbol(int strong_defs, int weak_defs);
+```
+
+Given the number of **strong** definitions (functions / initialized globals) and **weak**
+definitions (uninitialized globals) of one symbol, return:
+
+- `0` — resolves cleanly to exactly one definition.
+- `-1` — **multiple strong definitions** (a `multiple definition` link error).
+- `-2` — **no definition at all** (an `undefined reference`).
+
+## The rules (apply in this spirit)
+
+- `strong_defs >= 2` → `-1` (two strong definitions conflict).
+- `strong_defs == 1` → `0` (the strong one wins; any weaks are ignored).
+- `strong_defs == 0 && weak_defs >= 1` → `0` (a weak definition is chosen).
+- `strong_defs == 0 && weak_defs == 0` → `-2` (nothing defines it).
+
+Use **Run** to experiment and **Submit** to grade.

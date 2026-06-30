@@ -1,0 +1,135 @@
+# Relocation, PIC/PIE, and the Loader
+
+After symbol resolution, the linker still has to decide *where* everything goes in memory and
+patch all the addresses to match. That patching is **relocation**. Modern systems add a twist —
+**position-independent code** — so programs and libraries can load at randomized addresses, which
+underpins a key security defense.
+
+## Relocation: patching addresses
+
+In an object file, the compiler doesn't yet know the final address of functions and globals, so
+it leaves **relocation entries**: "at this spot, once you know where `printf` lands, write its
+address." When the linker lays out all the sections (`.text`, `.data`, `.bss`, ...) and assigns
+final addresses, it walks the relocation entries and **fills in the real addresses**.
+
+```
+.text (code), .data (initialized globals), .bss (zero-initialized globals), .rodata (constants)
+```
+
+So linking = **symbol resolution** (match uses to definitions) + **relocation** (place sections
+and patch addresses).
+
+<KnowledgeCheck
+  id="rl-reloc"
+  type="mcq"
+  prompt="What is relocation?"
+  options={[
+    "Renaming symbols",
+    "Placing sections at final addresses and patching references to use those addresses",
+    "Compressing the binary",
+    "Loading a shared library at runtime"
+  ]}
+  answer={1}
+  explanation="Relocation assigns final addresses to sections and fixes up every reference (from relocation entries) to point at them."
+/>
+
+## The sections, briefly
+
+- `.text` — executable code (read-only, executable).
+- `.rodata` — read-only constants (string literals, const tables).
+- `.data` — initialized global/static variables.
+- `.bss` — uninitialized globals; takes **no space in the file** (just a size), zeroed at load.
+
+This is why a huge `static int buf[1000000];` barely grows the binary: it lives in `.bss` as a
+size, not stored bytes.
+
+<KnowledgeCheck
+  id="rl-bss"
+  type="mcq"
+  prompt="Why does a large uninitialized global array barely increase the executable's file size?"
+  options={[
+    "It is compressed",
+    "It lives in .bss, which stores only a size and is zeroed at load time",
+    "It is stored in .text",
+    "The compiler deletes it"
+  ]}
+  answer={1}
+  explanation=".bss records only the size; the loader allocates and zeroes it at runtime, so it costs no file bytes."
+/>
+
+## Position-independent code (PIC) and the GOT/PLT
+
+A shared library can be loaded at **different addresses** in different processes, so its code
+can't hardcode absolute addresses. **Position-independent code** accesses globals and functions
+**indirectly** through two tables filled in at load/first-use:
+
+- **GOT (Global Offset Table)** — holds the runtime addresses of global variables/functions. Code
+  reads the address from the GOT rather than embedding it.
+- **PLT (Procedure Linkage Table)** — stubs for calling external functions, enabling **lazy
+  binding**: the first call to `printf` resolves its real address (via the dynamic linker) and
+  caches it in the GOT; later calls jump straight there.
+
+This indirection is what lets one `libc` be mapped at a random address in every process while the
+same code works everywhere.
+
+<KnowledgeCheck
+  id="rl-plt"
+  type="mcq"
+  prompt="What do the GOT and PLT enable for dynamically-linked programs?"
+  options={[
+    "Static linking",
+    "Indirect, position-independent access to symbols and lazy binding of external functions",
+    "Faster arithmetic",
+    "Smaller .bss"
+  ]}
+  answer={1}
+  explanation="The GOT holds runtime addresses and the PLT provides call stubs with lazy resolution, so PIC works at any load address."
+/>
+
+## The loader
+
+When you run a program, the OS **loader** (`execve` + the dynamic linker `ld.so`) does roughly:
+
+1. Read the executable's headers (ELF) to learn its segments.
+2. Map `.text`/`.rodata` (read-only/exec) and `.data` (writable) into memory; allocate and zero
+   `.bss`.
+3. Load any required shared libraries (and theirs, recursively), performing relocations.
+4. Set up the stack (args/env), then jump to the entry point (`_start` → `main`).
+
+<KnowledgeCheck
+  id="rl-loader"
+  type="mcq"
+  prompt="Which task is the loader's responsibility at program start?"
+  options={[
+    "Compiling the source",
+    "Mapping segments into memory, loading needed shared libs, zeroing .bss, and jumping to the entry point",
+    "Resolving compile errors",
+    "Creating the .a archive"
+  ]}
+  answer={1}
+  explanation="The loader maps segments, loads dependencies, zeroes .bss, sets up the stack, and transfers control to _start/main."
+/>
+
+## PIE and security (ASLR)
+
+A **Position-Independent Executable (PIE)** applies PIC to the *main program* too, so even its
+code can be loaded at a randomized base. Combined with **ASLR** (randomizing stack/heap/library
+bases each run), this makes addresses unpredictable — defeating the hardcoded-address assumptions
+exploits rely on (recall the buffer-overflow lesson). Modern toolchains build PIE by default.
+
+<Aside kind="insight">
+The chain connects: relocation makes code *placeable*; PIC/PIE make it placeable at *any* address;
+ASLR then *randomizes* that address every run. Together they turn "jump to a known address" — the
+attacker's dream — into a guessing game.
+</Aside>
+
+## Recap
+
+- Linking = symbol resolution + **relocation** (place sections, patch addresses).
+- Sections: `.text`, `.rodata`, `.data`, `.bss` (size-only, zeroed at load).
+- PIC accesses symbols indirectly via the **GOT** (data) and **PLT** (lazy function binding).
+- The **loader** maps segments, loads shared libs, zeroes `.bss`, and jumps to the entry point.
+- **PIE + ASLR** randomize load addresses, a core exploit mitigation.
+
+That completes Module M4. You now understand the full journey from multiple `.c` files to a
+running, dynamically-linked, address-randomized process.

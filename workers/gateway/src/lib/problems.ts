@@ -426,6 +426,35 @@ int main(void) {
 #include "impl.c"
 `;
 
+const SYMRESOLVE_HEADER = `#ifndef SYMRESOLVE_H
+#define SYMRESOLVE_H
+int resolve_symbol(int strong_defs, int weak_defs);
+#endif
+`;
+
+const SYMRESOLVE_DRIVER = `#include "symresolve.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  CHECK("one_strong", resolve_symbol(1, 0) == 0, "one strong def should resolve (0)");
+  CHECK("one_weak", resolve_symbol(0, 1) == 0, "one weak def should resolve (0)");
+  CHECK("strong_wins", resolve_symbol(1, 2) == 0, "one strong with weaks should resolve (0)");
+  CHECK("multiple_strong", resolve_symbol(2, 0) == -1, "two strong defs should be -1");
+  CHECK("undefined", resolve_symbol(0, 0) == -2, "no definition should be -2");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -644,6 +673,26 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       three_by_three: "hidden",
       four_by_four: "hidden",
       large_64: "hidden",
+    },
+  },
+
+  "m4-p-symbol-resolve": {
+    id: "m4-p-symbol-resolve",
+    languageId: 50,
+    header: { name: "symresolve.h", content: SYMRESOLVE_HEADER },
+    driver: SYMRESOLVE_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "symresolve.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      one_strong: "sample",
+      one_weak: "hidden",
+      strong_wins: "hidden",
+      multiple_strong: "hidden",
+      undefined: "hidden",
     },
   },
 };

@@ -1,0 +1,134 @@
+# Translation Units, Declarations, and Definitions
+
+Before a program runs, separately-written source files must be welded into one executable. That
+job belongs to the **linker**, and to understand it you first need a precise grip on three ideas
+that beginners blur together: the **translation unit**, the **declaration**, and the
+**definition**.
+
+## The translation unit
+
+A **translation unit** is what the compiler actually compiles: a single `.c` file *after the
+preprocessor has run* (all `#include`s pasted in, all macros expanded). Crucially, **the compiler
+sees one translation unit at a time** — it has no idea what's in your other `.c` files.
+
+This is the single most important fact about C compilation. When `main.c` calls a function
+defined in `util.c`, the compiler processing `main.c` never sees `util.c`. It only needs a
+*promise* that the function exists; the linker connects the promise to the real thing later.
+
+<KnowledgeCheck
+  id="tu-unit"
+  type="mcq"
+  prompt="What does the compiler process at one time?"
+  options={[
+    "The entire program at once",
+    "A single translation unit (one .c file after preprocessing)",
+    "Only header files",
+    "The final executable"
+  ]}
+  answer={1}
+  explanation="The compiler works one translation unit at a time and has no visibility into other .c files; the linker joins them."
+/>
+
+## Declarations vs. definitions
+
+- A **declaration** introduces a name and its type — a promise that it exists *somewhere*.
+  `int square(int);` declares `square`. `extern int g;` declares a global `g`. Declarations
+  produce **no code or storage**.
+- A **definition** actually creates the thing: the function body or the variable's storage.
+  `int square(int x) { return x*x; }` defines `square`; `int g = 0;` defines `g`.
+
+You may **declare** a name as many times as you like, but you must **define** it exactly once.
+This is the **One Definition Rule (ODR)**.
+
+```c
+int square(int);              // declaration (a promise)
+int square(int x){return x*x;} // definition (the real thing)
+```
+
+<KnowledgeCheck
+  id="tu-decl"
+  type="mcq"
+  prompt="Which of these is a definition (not just a declaration)?"
+  options={[
+    "int f(int);",
+    "extern int g;",
+    "int g = 5;",
+    "void h(void);"
+  ]}
+  answer={2}
+  explanation="`int g = 5;` allocates storage and gives a value — a definition. The others are promises (declarations)."
+/>
+
+## Why headers and .c files split this way
+
+The convention falls directly out of the rules above:
+
+- **Headers (`.h`)** hold **declarations** — function prototypes, `extern` globals, types,
+  macros. They're `#include`d into many translation units so everyone shares the same promises.
+- **Source files (`.c`)** hold **definitions** — the actual bodies and storage, compiled exactly
+  once.
+
+If you accidentally put a *definition* in a header that's included by multiple `.c` files, each
+translation unit gets its own definition, and the linker complains about **multiple definitions**.
+
+<Aside kind="pitfall">
+This is why you write `extern int counter;` in a header and `int counter = 0;` in exactly one
+`.c` file. Putting `int counter = 0;` in the header would define it in every file that includes
+it — a multiple-definition link error.
+</Aside>
+
+<KnowledgeCheck
+  id="tu-header"
+  type="mcq"
+  prompt="What belongs in a header file?"
+  options={[
+    "Function definitions (bodies)",
+    "Declarations: prototypes, extern globals, types",
+    "Nothing; headers are optional noise",
+    "The main function"
+  ]}
+  answer={1}
+  explanation="Headers share declarations across translation units; definitions live once in a .c file."
+/>
+
+## Compile-time vs. link-time errors (revisited precisely)
+
+Now the distinction is sharp:
+
+- A **compile error** happens within one translation unit — bad syntax, type mismatch, using an
+  undeclared name. The compiler can detect it because everything it needs is in that unit (given
+  the declarations from headers).
+- A **link error** happens when combining units — a declared-but-never-defined symbol
+  (`undefined reference`) or a symbol defined in two units (`multiple definition`). The compiler
+  can't catch these because no single unit has the whole picture.
+
+```c
+// main.c
+int helper(int);          // declared -> compiles fine
+int main(void){ return helper(3); }
+// (no helper definition anywhere)  -> LINK error: undefined reference to 'helper'
+```
+
+<KnowledgeCheck
+  id="tu-link"
+  type="mcq"
+  prompt="Calling a declared-but-undefined function produces which error, and when?"
+  options={[
+    "Compile error, in main.c",
+    "Link error: undefined reference, when combining units",
+    "Runtime crash only",
+    "No error"
+  ]}
+  answer={1}
+  explanation="The declaration satisfies the compiler; the missing definition surfaces only at link time as 'undefined reference'."
+/>
+
+## Recap
+
+- A translation unit is one preprocessed `.c` file; the compiler sees only one at a time.
+- Declarations promise; definitions create. Declare freely, define once (the ODR).
+- Headers carry declarations across units; `.c` files carry definitions.
+- Compile errors are within a unit; link errors (undefined/multiple definition) arise when
+  joining units.
+
+Next: **Symbols** — strong vs. weak, and how the linker resolves them.

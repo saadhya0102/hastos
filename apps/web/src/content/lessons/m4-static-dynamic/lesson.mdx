@@ -1,0 +1,136 @@
+# Static vs. Dynamic Libraries
+
+Real programs link against libraries — collections of precompiled object files. There are two
+flavors, **static** and **dynamic**, with very different consequences for binary size, updates,
+and deployment. Understanding both (and the famous link-order gotcha) is everyday systems
+knowledge.
+
+## Static libraries (.a archives)
+
+A static library is just an **archive** of `.o` files (think of it as a `.zip` of object files),
+created with `ar`:
+
+```
+ar rcs libmath.a add.o mul.o
+gcc main.o libmath.a -o app      # or: gcc main.o -L. -lmath
+```
+
+At link time, the linker pulls **only the object files it needs** out of the archive to resolve
+undefined symbols, and copies that code **into the executable**. The library isn't needed at
+runtime — everything is baked in.
+
+### The link-order gotcha
+The linker processes files **left to right**, carrying a set of currently-unresolved symbols. It
+only pulls an object from an archive if that archive appears **after** the file that needs it.
+So this fails:
+
+```
+gcc -lmath main.o      # WRONG: -lmath seen first, main.o's needs not known yet
+gcc main.o -lmath      # RIGHT: main.o creates the need, then -lmath satisfies it
+```
+
+This trips up nearly everyone at least once: "undefined reference" even though the library is
+right there — because it was listed too early.
+
+<KnowledgeCheck
+  id="sd-order"
+  type="mcq"
+  prompt="Why does `gcc -lmath main.o` fail to link, while `gcc main.o -lmath` succeeds?"
+  options={[
+    "-lmath is misspelled",
+    "The linker processes left-to-right; a library must come AFTER the object that needs its symbols",
+    "main.o must be compiled with -lmath",
+    "Static libraries cannot be linked"
+  ]}
+  answer={1}
+  explanation="The linker only extracts archive members to satisfy already-pending undefined symbols, so the library must follow the files that reference it."
+/>
+
+## Dynamic / shared libraries (.so)
+
+A shared library is loaded at **runtime**, not copied into the executable:
+
+```
+gcc -shared -fPIC add.c mul.c -o libmath.so
+gcc main.o -L. -lmath -o app          # records a DEPENDENCY on libmath.so
+```
+
+The executable stores a *reference* ("I need `libmath.so` and symbol `add`"), and the **dynamic
+linker/loader** (`ld.so`) resolves it when the program starts (or lazily on first use). Many
+programs share **one copy** of the library in memory.
+
+<KnowledgeCheck
+  id="sd-where"
+  type="mcq"
+  prompt="With dynamic linking, where does the library's code live relative to the executable?"
+  options={[
+    "Copied into the executable at link time",
+    "Loaded separately at runtime and shared among programs",
+    "It is discarded",
+    "Inside the source file"
+  ]}
+  answer={1}
+  explanation="Shared libraries are loaded at runtime by the dynamic linker; one in-memory copy can serve many processes."
+/>
+
+## Load-time vs. run-time linking
+
+- **Load-time dynamic linking** — the loader resolves the library's symbols when the program
+  launches (the common case). Lazy binding via the PLT defers each function's resolution to its
+  first call.
+- **Run-time dynamic linking** — the program explicitly loads a library *while running* with
+  `dlopen`/`dlsym`. This powers plugins: load code chosen at runtime.
+
+```c
+void *h = dlopen("./plugin.so", RTLD_NOW);
+int (*f)(int) = dlsym(h, "process");   // grab a function by name at runtime
+```
+
+<KnowledgeCheck
+  id="sd-dlopen"
+  type="mcq"
+  prompt="What is dlopen/dlsym used for?"
+  options={[
+    "Static linking at compile time",
+    "Loading a shared library and looking up symbols at run time (e.g., plugins)",
+    "Creating a .a archive",
+    "Zeroing memory"
+  ]}
+  answer={1}
+  explanation="dlopen loads a .so at runtime and dlsym resolves a symbol by name — the basis of plugin systems."
+/>
+
+## Trade-offs
+
+| Aspect | Static (.a) | Dynamic (.so) |
+| --- | --- | --- |
+| Binary size | Larger (code copied in) | Smaller (code shared) |
+| Memory across processes | Each has its own copy | One shared copy |
+| Updates / security fixes | Must relink & redeploy | Update the .so once; all users benefit |
+| Startup | Slightly faster (no resolution) | Slight load-time resolution cost |
+| Deployment | Self-contained, portable | Must ship/find the right .so versions |
+
+The update story is why OS distributions favor shared libraries: a single patched `libssl.so`
+fixes every program. The portability story is why container/static builds (e.g., Go binaries,
+musl-static C) favor static linking.
+
+<KnowledgeCheck
+  id="sd-update"
+  type="mcq"
+  prompt="A security bug is found in a library used by 50 programs. Which linking model lets you fix all 50 by updating one file?"
+  options={["Static (.a)", "Dynamic (.so)", "Neither", "Both equally"]}
+  answer={1}
+  explanation="With dynamic linking, replacing the shared .so fixes every program that loads it; static binaries would each need relinking."
+/>
+
+## Recap
+
+- Static `.a` = archive of objects; needed members are copied into the executable; mind link
+  order (libraries after the files that use them).
+- Dynamic `.so` = loaded at runtime, shared across processes; resolved by `ld.so` (lazily via the
+  PLT), or explicitly via `dlopen`/`dlsym`.
+- Trade-offs: static = portable/self-contained; dynamic = smaller, shareable, centrally
+  updatable.
+
+Next: **Relocation, PIC/PIE, and the Loader** — how addresses get fixed up so code can run
+anywhere.

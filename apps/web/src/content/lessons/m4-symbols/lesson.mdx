@@ -1,0 +1,138 @@
+# Symbols: Strong, Weak, and Resolution
+
+The linker's central job is **symbol resolution**: matching every *use* of a name to exactly one
+*definition*. To do that it reads each object file's **symbol table** and applies a small set of
+rules. Knowing those rules explains a class of subtle, dangerous bugs — especially when
+duplicate definitions silently pick the wrong one.
+
+## What is a symbol?
+
+When the assembler produces an object file (`.o`), it records a **symbol table**: a list of names
+the file is involved with. Each symbol is one of:
+
+- **Defined (global)** — this file provides it (a non-static function or global variable).
+- **Undefined (referenced)** — this file *uses* it but doesn't define it; the linker must find a
+  definition elsewhere (e.g., `printf`).
+- **Local** — `static` functions/variables, visible only within this file; the linker doesn't
+  resolve these across files.
+
+You can inspect them with `nm file.o`: `T` = defined in text, `U` = undefined, `t` = local.
+
+<KnowledgeCheck
+  id="sy-undef"
+  type="mcq"
+  prompt="In an object file, what is an 'undefined' symbol?"
+  options={[
+    "A symbol with a syntax error",
+    "A name the file references but does not define; the linker must find it elsewhere",
+    "A static (local) function",
+    "A deleted symbol"
+  ]}
+  answer={1}
+  explanation="Undefined symbols are external references (e.g., printf) that the linker resolves against definitions in other objects/libraries."
+/>
+
+## Strong vs. weak symbols
+
+Global symbols come in two strengths:
+
+- **Strong** — functions and **initialized** global variables (`int g = 5;`).
+- **Weak** — **uninitialized** global variables (`int g;` at file scope, a tentative definition),
+  and anything explicitly marked weak (`__attribute__((weak))`).
+
+This strength drives how the linker handles duplicates.
+
+<KnowledgeCheck
+  id="sy-strength"
+  type="mcq"
+  prompt="Which is a STRONG symbol?"
+  options={[
+    "int g;  (uninitialized global)",
+    "int g = 5;  (initialized global)",
+    "static int g;  (file-local)",
+    "A function prototype"
+  ]}
+  answer={1}
+  explanation="Initialized globals and function definitions are strong; uninitialized globals are weak; static is local (not global)."
+/>
+
+## The resolution rules
+
+When the linker sees the same global name defined in more than one place, it applies three rules:
+
+1. **Multiple strong definitions → error.** Two `int g = 0;` (or two function bodies with the
+   same name) across files is a `multiple definition` link error.
+2. **One strong + any number of weak → the strong wins.** No error; all references bind to the
+   strong definition.
+3. **Multiple weak, no strong → the linker picks one** (arbitrarily, often the first/largest).
+   No error — but this is a silent trap.
+
+And of course:
+4. **A referenced symbol with no definition anywhere → `undefined reference` error.**
+
+<KnowledgeCheck
+  id="sy-rule1"
+  type="mcq"
+  prompt="Two .c files each contain `int counter = 0;` at file scope. What happens at link time?"
+  options={[
+    "It links; one is chosen",
+    "Multiple definition error (two strong symbols)",
+    "Undefined reference error",
+    "A compile error in both files"
+  ]}
+  answer={1}
+  explanation="Both are strong (initialized globals); two strong definitions of the same symbol is a multiple-definition link error."
+/>
+
+## Why this is dangerous
+
+Rules 2 and 3 mean the linker can **silently** bind a name to a definition you didn't intend.
+Classic disaster:
+
+```c
+// a.c
+int x;            // weak (uninitialized) — programmer thinks it's an int
+// b.c
+double x = 3.14;  // strong — a DIFFERENT type, same name
+```
+
+The linker happily binds `x` in `a.c` to the 8-byte `double` in `b.c` (rule 2: strong wins).
+Now `a.c` reads/writes 4 bytes thinking it's an `int`, corrupting the `double` — a bug with no
+error message, just mysterious memory corruption. This is exactly why you keep globals `static`
+or declare them `extern` in a shared header and define them once.
+
+<Aside kind="pitfall">
+Treat duplicate global names as a hazard, not a convenience. Enable `-fno-common` (now the
+default in modern GCC/Clang) so tentative definitions become errors, and keep file-private state
+`static`.
+</Aside>
+
+<KnowledgeCheck
+  id="sy-rule2"
+  type="mcq"
+  prompt="a.c has `int x;` (weak) and b.c has `double x = 3.14;` (strong). What does the linker do?"
+  options={[
+    "Errors: multiple definition",
+    "Binds x to the strong double definition (silently), risking corruption",
+    "Errors: undefined reference",
+    "Keeps them separate"
+  ]}
+  answer={1}
+  explanation="Strong beats weak (rule 2), so x binds to the double — a silent, type-confused alias that corrupts memory."
+/>
+
+## Recap
+
+- Object files carry a symbol table: defined, undefined, or local symbols.
+- Strong = functions + initialized globals; weak = uninitialized globals.
+- Resolution: two strong = error; strong+weak = strong wins; multiple weak = pick one;
+  no definition = undefined reference.
+- Strong-beats-weak can silently alias mismatched types — keep globals `static`/`extern` and
+  define once.
+
+## Practice
+
+Implement the linker's decision in code: the **Symbol Resolution** problem below asks you to
+return the outcome given counts of strong and weak definitions.
+
+Next: **Static vs. Dynamic Libraries** — how collections of objects are packaged and linked.
