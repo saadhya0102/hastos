@@ -1,0 +1,22 @@
+Implement `float_bits`: return the raw IEEE-754 single-precision **bit pattern** of a `float`
+as a `uint32_t`. This is how you inspect, serialize, or hash floating-point values at the bit
+level.
+
+## Your task
+
+In `floatbits.c`, implement:
+
+```c
+uint32_t float_bits(float f);
+```
+
+Return the 32 bits of `f` reinterpreted as an unsigned integer. For example,
+`float_bits(1.0f)` is `0x3F800000`.
+
+## Hints (no spoilers)
+
+- A `float` and a `uint32_t` are both 4 bytes; you want the *same bytes*, viewed as an integer.
+- Use `memcpy(&out, &f, sizeof out)` to copy the bytes. Avoid `*(uint32_t*)&f` — that pointer
+  alias is undefined behavior and may be miscompiled (and UBSan can flag it).
+
+Use **Run** to print the hex and **Submit** to grade against several known values.

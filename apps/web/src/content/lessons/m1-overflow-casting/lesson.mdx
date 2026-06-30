@@ -1,0 +1,150 @@
+# Integer Overflow and Casting Pitfalls
+
+Arithmetic on fixed-width integers can't always fit the true mathematical result. What happens
+when it doesn't depends on whether the type is signed or unsigned — and getting this wrong has
+caused crashes, wrong answers, and famous security exploits.
+
+## Unsigned overflow wraps (defined)
+
+Unsigned arithmetic in C is **modular**: results wrap around modulo `2^n`. This is fully
+defined behavior you can rely on.
+
+```c
+uint8_t x = 255;
+x = x + 1;     /* wraps to 0 */
+uint8_t y = 0;
+y = y - 1;     /* wraps to 255 */
+```
+
+Wrapping is useful for hashes, ring buffers, and cyclic counters — but a surprise if you
+expected saturation.
+
+<KnowledgeCheck
+  id="oc-wrap"
+  type="numeric"
+  prompt="For a uint8_t, what is the result of 250 + 10?"
+  answer={4}
+  explanation="260 mod 256 = 4. Unsigned arithmetic wraps modulo 2^8."
+/>
+
+## Signed overflow is undefined
+
+Signed integer overflow is **undefined behavior**. The compiler is allowed to assume it never
+happens and optimize accordingly. So `INT_MAX + 1` is not "wraps to INT_MIN" — it's UB, and
+the program may do anything.
+
+```c
+int x = INT_MAX;
+int y = x + 1;   /* UNDEFINED BEHAVIOR — do not rely on wrapping */
+```
+
+This is why a check like `if (x + 1 < x)` to detect overflow is itself broken: the compiler
+assumes signed overflow can't occur, so it may *delete the check entirely*.
+
+<Aside kind="warning">
+Never detect signed overflow by letting it happen. Detect it *before* the operation, or use
+compiler builtins like `__builtin_add_overflow`, or do the math in a wider type / unsigned.
+</Aside>
+
+<KnowledgeCheck
+  id="oc-signed"
+  type="mcq"
+  prompt="What does the C standard say about `INT_MAX + 1`?"
+  options={[
+    "It wraps to INT_MIN",
+    "It is undefined behavior",
+    "It saturates at INT_MAX",
+    "It throws an exception"
+  ]}
+  answer={1}
+  explanation="Signed overflow is UB; the compiler may assume it never happens. Unsigned, by contrast, wraps."
+/>
+
+## Truncation: narrowing throws away high bits
+
+Assigning a wider value to a narrower type keeps only the low bits:
+
+```c
+int big = 0x1234;
+uint8_t small = (uint8_t)big;   /* keeps 0x34, the low byte */
+```
+
+<MiniIDE language="c" starter={`#include <stdio.h>
+#include <stdint.h>
+int main(void) {
+  int big = 0x1234;
+  uint8_t small = (uint8_t)big;
+  printf("0x%X truncated to uint8_t = 0x%X\\n", big, small); /* 0x34 */
+
+  uint8_t a = 200, b = 100;
+  uint8_t sum = a + b;     /* 300 -> wraps to 44 in 8 bits */
+  printf("200 + 100 as uint8_t = %u\\n", sum);
+  return 0;
+}`} />
+
+## Integer promotion: the hidden surprise
+
+Before arithmetic, C *promotes* small types (`char`, `short`) to `int`. So `a + b` for two
+`uint8_t` operands is actually computed in `int`, then assigned back. This means intermediate
+results can exceed 8 bits even though the operands are bytes — which interacts with truncation
+on assignment.
+
+```c
+uint8_t a = 200, b = 100;
+int wide = a + b;          /* 300 — promoted to int, no overflow here */
+uint8_t narrow = a + b;    /* 300 truncated to 44 on assignment */
+```
+
+<KnowledgeCheck
+  id="oc-promote"
+  type="mcq"
+  prompt="For `uint8_t a=200,b=100; int w = a + b;`, what is w?"
+  options={["44", "300", "Undefined", "256"]}
+  answer={1}
+  explanation="Operands promote to int, so a+b is 300; assigning to int keeps 300. Only truncation to uint8_t would give 44."
+/>
+
+## Detecting overflow safely
+
+The robust patterns:
+
+- **Check before the op** using the limits. For unsigned add: `if (a > UINT_MAX - b) overflow;`
+- **Use a wider type** for the intermediate, then range-check.
+- **Use builtins**: `__builtin_add_overflow(a, b, &result)` returns true on overflow (GCC/Clang).
+
+```c
+/* Safe unsigned add with saturation */
+uint8_t sat_add(uint8_t a, uint8_t b) {
+  unsigned s = (unsigned)a + b;      /* no overflow in int/unsigned */
+  return s > 255u ? 255u : (uint8_t)s;
+}
+```
+
+## Why it matters: real bugs
+
+- **Buffer size math.** `malloc(count * size)` can overflow, allocating *less* than expected,
+  leading to heap overflows — a classic exploit primitive. Use checked multiplication.
+- **Array indexing.** Signed/unsigned confusion plus overflow can produce out-of-bounds
+  indices.
+- **Time/counter bugs.** The Year-2038 problem is a signed 32-bit time overflow.
+
+<Aside kind="insight">
+HastOS compiles your code with UBSan (`-fsanitize=undefined`), which traps signed overflow at
+runtime. If your solution relies on signed wraparound, you'll see a clear "signed integer
+overflow" report instead of a silent wrong answer.
+</Aside>
+
+## Recap
+
+- Unsigned arithmetic wraps modulo `2^n` (defined); signed overflow is undefined behavior.
+- Narrowing truncates to the low bits; never trust post-hoc signed-overflow checks.
+- Small types promote to `int` before arithmetic — mind the intermediate width.
+- Detect overflow *before* it happens (limits, wider types, or builtins).
+- Overflow in size/index math is a real security hazard.
+
+## Practice
+
+Reinforce this with **Saturating Add** below — clamp instead of wrap, exactly the `sat_add`
+pattern above generalized.
+
+Next: **Byte Ordering (Endianness)** — how multi-byte values are laid out in memory.

@@ -1,0 +1,156 @@
+# Unsigned and Two's Complement
+
+The same bits can mean different numbers depending on how you *interpret* them. A byte of all
+ones, `0b11111111`, is `255` as an unsigned value but `-1` as a signed value. Understanding
+this dual interpretation — and the **two's complement** scheme that makes signed arithmetic
+work — is foundational for everything from overflow bugs to pointer math.
+
+## Unsigned: plain binary
+
+An unsigned integer is just base-2 positional notation. An `n`-bit unsigned value ranges from
+`0` to `2^n - 1`:
+
+- `uint8_t`: 0 .. 255
+- `uint16_t`: 0 .. 65535
+- `uint32_t`: 0 .. 4,294,967,295
+
+Each bit at position `k` contributes `2^k`. Nothing surprising.
+
+<KnowledgeCheck
+  id="ut-range"
+  type="numeric"
+  prompt="What is the maximum value of a uint16_t?"
+  answer={65535}
+  explanation="2^16 - 1 = 65535."
+/>
+
+## Signed: two's complement
+
+For signed integers, almost every modern machine uses **two's complement**. The trick: the
+most significant bit has a *negative* weight. For an 8-bit signed value, the bit weights are:
+
+```
+position:   7     6    5    4    3    2    1    0
+weight:   -128   64   32   16    8    4    2    1
+```
+
+So `0b10000000` is `-128`, and `0b11111111` is `-128 + 64 + ... + 1 = -1`. The range of an
+`n`-bit signed integer is `-2^(n-1)` to `2^(n-1) - 1`:
+
+- `int8_t`: -128 .. 127
+- `int32_t`: -2,147,483,648 .. 2,147,483,647
+
+Notice the asymmetry: there's one more negative number than positive, because zero takes a
+slot on the non-negative side. That lone extra value (`INT_MIN`) causes real bugs — `-INT_MIN`
+overflows.
+
+<KnowledgeCheck
+  id="ut-int8"
+  type="mcq"
+  prompt="What is the value of the int8_t with bit pattern 0b11111111?"
+  options={["255", "-1", "127", "-128"]}
+  answer={1}
+  explanation="In 8-bit two's complement, all-ones is -1 (the MSB weight -128 plus 64+32+...+1)."
+/>
+
+## Why negation is `~x + 1`
+
+To negate a two's-complement number, flip all the bits and add one. Why does this work? For
+any `x`, `x + ~x == -1` (all ones). So `~x = -1 - x`, which means `~x + 1 = -x`. This identity
+is the whole reason two's complement is so elegant:
+
+```c
+int x = 5;
+int neg = ~x + 1;   /* = -5 */
+```
+
+Because of this, the CPU needs only an **adder** — subtraction `a - b` is computed as
+`a + (~b + 1)`. There's no separate subtractor circuit.
+
+<MiniIDE language="c" starter={`#include <stdio.h>
+int main(void) {
+  int x = 5;
+  printf("~x + 1 = %d\\n", ~x + 1);       /* -5 */
+  unsigned char u = 0xFF;
+  printf("0xFF as unsigned char = %u\\n", u);   /* 255 */
+  printf("(signed char)0xFF      = %d\\n", (signed char)u); /* -1 */
+  return 0;
+}`} />
+
+## Conversions: the bits stay, the meaning changes
+
+Casting between signed and unsigned of the **same width** does *not* change the bits — it only
+changes interpretation. `(unsigned)(-1)` is `0xFFFFFFFF` = `4294967295`. Widening (e.g.,
+`int` to `long`) **sign-extends** signed values (copies the sign bit) and **zero-extends**
+unsigned values.
+
+<Aside kind="insight">
+"Same bits, new interpretation" is the key mental model. `(unsigned char)-1 == 255` and
+`(signed char)255 == -1` because both share the bit pattern `0xFF`.
+</Aside>
+
+## The signed/unsigned comparison trap
+
+When you compare a signed and an unsigned value in C, the signed operand is converted to
+unsigned. A negative number becomes a huge positive number, flipping comparisons:
+
+```c
+int a = -1;
+unsigned b = 1;
+if (a < b) puts("less");      /* NOT printed! */
+else       puts("not less");  /* printed: -1 became 4294967295 */
+```
+
+This is a frequent source of bugs, especially in loops with `unsigned` counters or with
+`size_t` (which is unsigned): `for (size_t i = n - 1; i >= 0; i--)` never terminates, because
+`i >= 0` is always true for unsigned.
+
+<KnowledgeCheck
+  id="ut-cmp"
+  type="mcq"
+  prompt="In C, what does the comparison `-1 < 1u` evaluate to?"
+  options={[
+    "true (1)",
+    "false (0), because -1 converts to a large unsigned value",
+    "a compile error",
+    "undefined behavior"
+  ]}
+  answer={1}
+  explanation="The int -1 is converted to unsigned (4294967295), which is not less than 1, so the result is false."
+/>
+
+<KnowledgeCheck
+  id="ut-loop"
+  type="mcq"
+  prompt="Why does `for (size_t i = n; i >= 0; i--)` loop forever?"
+  options={[
+    "size_t is signed",
+    "size_t is unsigned, so i >= 0 is always true; decrementing past 0 wraps to a huge value",
+    "n is negative",
+    "It does not loop forever"
+  ]}
+  answer={1}
+  explanation="size_t is unsigned; it can never be < 0, and 0-- wraps to SIZE_MAX, so the condition never fails."
+/>
+
+## Practical guidance
+
+- Use **unsigned** for bit manipulation, sizes, and quantities that can't be negative.
+- Use **signed** for values that can go negative or where you might subtract below zero.
+- Be deliberate at signed/unsigned boundaries; turn on `-Wsign-compare` (part of `-Wextra`).
+- Watch out for `INT_MIN`: `abs(INT_MIN)` and `-INT_MIN` are undefined/overflow.
+
+## Recap
+
+- Unsigned is plain binary, range `0 .. 2^n - 1`.
+- Two's complement gives the MSB a negative weight; range `-2^(n-1) .. 2^(n-1) - 1`.
+- Negation is `~x + 1`, so subtraction reuses the adder.
+- Casting same-width keeps the bits; widening sign- or zero-extends.
+- Mixed signed/unsigned comparisons convert to unsigned — a classic bug.
+
+## Practice
+
+Try **Saturating Add** below: add two values but clamp at the maximum instead of wrapping —
+a pattern used in audio, graphics, and DSP to avoid overflow artifacts.
+
+Next: **Integer Overflow and Casting Pitfalls** — when arithmetic silently goes wrong.

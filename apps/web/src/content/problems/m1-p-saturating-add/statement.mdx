@@ -1,0 +1,23 @@
+Implement **saturating addition** for 8-bit unsigned values: add two bytes, but if the result
+would exceed 255, clamp it to 255 instead of wrapping around. Saturating arithmetic is used in
+audio, image, and signal processing, where wrapping (e.g., a bright pixel suddenly going dark)
+would be a visible artifact.
+
+## Your task
+
+In `satadd.c`, implement:
+
+```c
+uint8_t sat_add_u8(uint8_t a, uint8_t b);
+```
+
+Return `a + b`, but clamp the result to `255` if it would overflow a `uint8_t`.
+
+## Hints (no spoilers)
+
+- If you add two `uint8_t` and store directly into a `uint8_t`, the result *wraps* (e.g.,
+  `200 + 100` becomes `44`). That's what you must avoid.
+- Compute the sum in a wider type (e.g., `unsigned`) where it can't overflow, then check
+  whether it exceeds `255` and clamp.
+
+Use **Run** to experiment and **Submit** to grade.

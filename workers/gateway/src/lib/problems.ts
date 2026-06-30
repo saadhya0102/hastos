@@ -169,6 +169,125 @@ int main(void) {
 #include "impl.c"
 `;
 
+const POPCOUNT_HEADER = `#ifndef POPCOUNT_H
+#define POPCOUNT_H
+int popcount(unsigned x);
+#endif
+`;
+
+const POPCOUNT_DRIVER = `#include "popcount.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  CHECK("zero", popcount(0u) == 0, "popcount(0) should be 0");
+  CHECK("one_bit", popcount(0x00010000u) == 1, "a single set bit should count as 1");
+  CHECK("byte_all_ones", popcount(0xFFu) == 8, "0xFF has 8 set bits");
+  CHECK("mixed", popcount(0xB4u) == 4, "0xB4 has 4 set bits");
+  CHECK("all_32_bits", popcount(0xFFFFFFFFu) == 32, "all ones has 32 set bits");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const SATADD_HEADER = `#ifndef SATADD_H
+#define SATADD_H
+#include <stdint.h>
+uint8_t sat_add_u8(uint8_t a, uint8_t b);
+#endif
+`;
+
+const SATADD_DRIVER = `#include "satadd.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  CHECK("no_overflow", sat_add_u8(100, 50) == 150, "100 + 50 should be 150");
+  CHECK("both_zero", sat_add_u8(0, 0) == 0, "0 + 0 should be 0");
+  CHECK("exact_max", sat_add_u8(200, 55) == 255, "200 + 55 should be exactly 255");
+  CHECK("overflow_clamps", sat_add_u8(200, 100) == 255, "200 + 100 should clamp to 255, not wrap to 44");
+  CHECK("max_plus_max", sat_add_u8(255, 255) == 255, "255 + 255 should clamp to 255");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const BSWAP_HEADER = `#ifndef BSWAP32_H
+#define BSWAP32_H
+#include <stdint.h>
+uint32_t bswap32(uint32_t x);
+#endif
+`;
+
+const BSWAP_DRIVER = `#include "bswap32.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  CHECK("example", bswap32(0x12345678u) == 0x78563412u, "0x12345678 should reverse to 0x78563412");
+  CHECK("zero", bswap32(0u) == 0u, "0 reverses to 0");
+  CHECK("all_ones", bswap32(0xFFFFFFFFu) == 0xFFFFFFFFu, "all ones reverses to all ones");
+  CHECK("low_byte_only", bswap32(0x000000ABu) == 0xAB000000u, "low byte should move to the high byte");
+  CHECK("involution", bswap32(bswap32(0xDEADBEEFu)) == 0xDEADBEEFu, "swapping twice should return the original");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const FLOATBITS_HEADER = `#ifndef FLOATBITS_H
+#define FLOATBITS_H
+#include <stdint.h>
+uint32_t float_bits(float f);
+#endif
+`;
+
+const FLOATBITS_DRIVER = `#include "floatbits.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  CHECK("one", float_bits(1.0f) == 0x3F800000u, "1.0f bit pattern should be 0x3F800000");
+  CHECK("zero", float_bits(0.0f) == 0x00000000u, "0.0f bit pattern should be 0x00000000");
+  CHECK("two", float_bits(2.0f) == 0x40000000u, "2.0f bit pattern should be 0x40000000");
+  CHECK("negative_one", float_bits(-1.0f) == 0xBF800000u, "-1.0f bit pattern should be 0xBF800000");
+  CHECK("one_half", float_bits(0.5f) == 0x3F000000u, "0.5f bit pattern should be 0x3F000000");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -227,6 +346,86 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       returns_dst: "hidden",
       binary_data: "hidden",
       large_copy: "hidden",
+    },
+  },
+
+  "m1-p-popcount": {
+    id: "m1-p-popcount",
+    languageId: 50,
+    header: { name: "popcount.h", content: POPCOUNT_HEADER },
+    driver: POPCOUNT_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "popcount.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      zero: "sample",
+      one_bit: "hidden",
+      byte_all_ones: "hidden",
+      mixed: "hidden",
+      all_32_bits: "hidden",
+    },
+  },
+
+  "m1-p-saturating-add": {
+    id: "m1-p-saturating-add",
+    languageId: 50,
+    header: { name: "satadd.h", content: SATADD_HEADER },
+    driver: SATADD_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "satadd.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      no_overflow: "sample",
+      both_zero: "hidden",
+      exact_max: "hidden",
+      overflow_clamps: "hidden",
+      max_plus_max: "hidden",
+    },
+  },
+
+  "m1-p-bswap32": {
+    id: "m1-p-bswap32",
+    languageId: 50,
+    header: { name: "bswap32.h", content: BSWAP_HEADER },
+    driver: BSWAP_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "bswap32.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      example: "sample",
+      zero: "hidden",
+      all_ones: "hidden",
+      low_byte_only: "hidden",
+      involution: "hidden",
+    },
+  },
+
+  "m1-p-float-bits": {
+    id: "m1-p-float-bits",
+    languageId: 50,
+    header: { name: "floatbits.h", content: FLOATBITS_HEADER },
+    driver: FLOATBITS_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "floatbits.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      one: "sample",
+      zero: "hidden",
+      two: "hidden",
+      negative_one: "hidden",
+      one_half: "hidden",
     },
   },
 };

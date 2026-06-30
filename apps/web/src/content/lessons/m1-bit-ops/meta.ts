@@ -17,7 +17,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   tags: ["bits", "masks", "c"],
   sourceRefs: ["CS:APP §2.1"],
   triviaTags: ["twos-complement", "endianness"],
-  relatedProblems: ["ds-ring-buffer"],
+  relatedProblems: ["m1-p-popcount", "ds-ring-buffer"],
 });
 
 export default meta;

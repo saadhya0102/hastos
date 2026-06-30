@@ -1,0 +1,23 @@
+Implement `bswap32`: reverse the byte order of a 32-bit value. This converts between
+little-endian and big-endian representations — exactly what `htonl`/`ntohl` do under the hood
+when sending integers over the network.
+
+## Your task
+
+In `bswap32.c`, implement:
+
+```c
+uint32_t bswap32(uint32_t x);
+```
+
+Return `x` with its four bytes in reverse order. For example, `0x12345678` becomes
+`0x78563412`. **Do not use `__builtin_bswap32`.**
+
+## Hints (no spoilers)
+
+- Isolate each byte with a mask (`x & 0x000000FF`, `x & 0x0000FF00`, ...) and shift it to its
+  mirrored position, then OR the four pieces together.
+- Byte 0 (lowest) moves to byte 3 (highest): a left shift of 24 bits. Work out the others.
+- A correct solution is its own inverse: `bswap32(bswap32(x)) == x`.
+
+Use **Run** to experiment and **Submit** to grade.

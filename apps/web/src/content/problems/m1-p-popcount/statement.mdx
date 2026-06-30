@@ -1,0 +1,22 @@
+Implement `popcount` (population count): return how many bits are set to `1` in a 32-bit
+unsigned integer. It's a fundamental operation in systems code — used in bitsets, error
+correction, hashing, and performance counters.
+
+## Your task
+
+In `popcount.c`, implement:
+
+```c
+int popcount(unsigned x);
+```
+
+Return the number of `1` bits in `x`. **Do not use `__builtin_popcount`** — implement it
+yourself.
+
+## Hints (no spoilers)
+
+- The simple approach checks each bit: `(x >> i) & 1` for `i` from 0 to 31.
+- A slicker approach (Brian Kernighan's): repeatedly do `x &= (x - 1)`, which clears the
+  lowest set bit; count how many iterations until `x` is 0.
+
+Use **Run** to experiment and **Submit** to grade against all bit patterns.
