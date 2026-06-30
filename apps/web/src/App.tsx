@@ -9,6 +9,7 @@ import { LessonPage } from "@/pages/LessonPage";
 import { Problems } from "@/pages/Problems";
 import { ProblemPage } from "@/pages/ProblemPage";
 import { Interview } from "@/pages/Interview";
+import { MockInterview } from "@/pages/MockInterview";
 import { Tests } from "@/pages/Tests";
 import { Review } from "@/pages/Review";
 import { Playground } from "@/pages/Playground";
@@ -32,6 +33,7 @@ export default function App() {
               <Route path="problems" element={<Problems />} />
               <Route path="problems/:problemId" element={<ProblemPage />} />
               <Route path="interview" element={<Interview />} />
+              <Route path="mock-interview" element={<MockInterview />} />
               <Route path="tests" element={<Tests />} />
               <Route path="review" element={<Review />} />
               <Route path="playground" element={<Playground />} />

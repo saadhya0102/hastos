@@ -3,12 +3,14 @@ import clsx from "clsx";
 import { useAuth } from "@/lib/auth";
 import { Button } from "./ui";
 import { SlavaPanel } from "./SlavaPanel";
+import { MockTimerBar } from "./MockTimerBar";
 
 const NAV = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/learn", label: "Curriculum" },
   { to: "/problems", label: "Problems" },
   { to: "/interview", label: "Interview Track" },
+  { to: "/mock-interview", label: "Mock Interview" },
   { to: "/tests", label: "Tests" },
   { to: "/review", label: "Review" },
   { to: "/playground", label: "Playground" },
@@ -96,6 +98,7 @@ export function AppShell() {
         </main>
       </div>
 
+      <MockTimerBar />
       <SlavaPanel />
     </div>
   );

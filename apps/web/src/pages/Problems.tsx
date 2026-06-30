@@ -34,11 +34,11 @@ export function Problems() {
       {list.length === 0 ? (
         <EmptyState title="No problems yet" hint="More problems are being authored." />
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {list.map((p) => {
             const prog = getProblemProgress(p.id);
             return (
-              <Link key={p.id} to={`/problems/${p.id}`}>
+              <Link key={p.id} to={`/problems/${p.id}`} className="block">
                 <Card className="flex items-center justify-between p-4 hover:border-accent/50">
                   <div>
                     <p className="font-medium">{p.title}</p>

@@ -25,7 +25,7 @@ export function ModulePage() {
         ) : (
           <div className="space-y-2">
             {lessons.map((l) => (
-              <Link key={l.id} to={`/learn/${moduleId}/${l.id}`}>
+              <Link key={l.id} to={`/learn/${moduleId}/${l.id}`} className="block">
                 <Card className="flex items-center justify-between p-4 hover:border-accent/50">
                   <div>
                     <p className="font-medium">{l.order + 1}. {l.title}</p>
@@ -46,7 +46,7 @@ export function ModulePage() {
         ) : (
           <div className="space-y-2">
             {problems.map((p) => (
-              <Link key={p.id} to={`/problems/${p.id}`}>
+              <Link key={p.id} to={`/problems/${p.id}`} className="block">
                 <Card className="flex items-center justify-between p-4 hover:border-accent/50">
                   <p className="font-medium">{p.title}</p>
                   <Badge tone="accent">{p.difficulty}</Badge>
