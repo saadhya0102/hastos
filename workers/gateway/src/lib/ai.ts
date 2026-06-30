@@ -18,31 +18,26 @@ export interface ChatStream {
   degraded: boolean;
 }
 
-/** Transform an OpenAI-style SSE chat stream into a plain-text token stream. */
+/**
+ * Transform an OpenAI-style SSE chat stream into a plain-text token stream.
+ * Uses a TransformStream + pipeThrough (the idiomatic, reliably-flushed approach in the
+ * Workers runtime) rather than a hand-rolled pull-based ReadableStream.
+ */
 function sseToText(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array> {
-  const reader = body.getReader();
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
   let buffer = "";
 
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) {
-        controller.close();
-        return;
-      }
-      buffer += decoder.decode(value, { stream: true });
+  const transform = new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      buffer += decoder.decode(chunk, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed.startsWith("data:")) continue;
         const data = trimmed.slice(5).trim();
-        if (data === "[DONE]") {
-          controller.close();
-          return;
-        }
+        if (data === "" || data === "[DONE]") continue;
         try {
           const json = JSON.parse(data) as {
             choices?: { delta?: { content?: string } }[];
@@ -54,10 +49,9 @@ function sseToText(body: ReadableStream<Uint8Array>): ReadableStream<Uint8Array>
         }
       }
     },
-    cancel() {
-      void reader.cancel();
-    },
   });
+
+  return body.pipeThrough(transform);
 }
 
 async function tryProvider(p: Provider, messages: ChatMessage[]): Promise<Response | null> {
