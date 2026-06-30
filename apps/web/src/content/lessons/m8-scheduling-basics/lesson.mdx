@@ -1,0 +1,118 @@
+# CPU Scheduling: FIFO, SJF, and Round Robin
+
+The scheduler decides **which ready process runs next**. Different policies optimize different
+metrics, and the trade-offs are a favorite interview and exam topic. We'll build up from the
+simplest policy to the one your laptop actually uses ideas from.
+
+## Two metrics
+
+- **Turnaround time** = completion time − arrival time. How long from submission to done. Good for
+  **batch** throughput.
+- **Response time** = first-run time − arrival time. How long until the job *first* gets the CPU.
+  Good for **interactivity** (you want a keystroke handled quickly).
+
+These often conflict: optimizing turnaround can hurt response time and vice versa.
+
+<KnowledgeCheck
+  id="sb-metrics"
+  type="mcq"
+  prompt="Which metric best captures interactivity (how quickly a job first responds)?"
+  options={["Turnaround time", "Response time", "Total burst time", "Arrival time"]}
+  answer={1}
+  explanation="Response time = first-run minus arrival; low response time means snappy interaction."
+/>
+
+## FIFO (First-In, First-Out)
+
+Run jobs in arrival order, to completion, non-preemptively. Simple and fair-ish, but suffers the
+**convoy effect**: a long job at the front makes short jobs behind it wait, inflating average
+turnaround.
+
+```
+Jobs (arrive ~0): A=100, B=10, C=10
+FIFO order A,B,C: completions 100, 110, 120 -> avg turnaround = (100+110+120)/3 = 110
+```
+
+If B and C had gone first, the average would plummet — motivating SJF.
+
+<KnowledgeCheck
+  id="sb-convoy"
+  type="mcq"
+  prompt="What is the convoy effect in FIFO scheduling?"
+  options={[
+    "Jobs run in parallel",
+    "Short jobs stuck waiting behind a long job, inflating average turnaround",
+    "The CPU idles",
+    "Jobs starve forever"
+  ]}
+  answer={1}
+  explanation="A long job at the front delays all the short jobs behind it, raising average turnaround."
+/>
+
+## SJF / STCF (Shortest Job First / Shortest Time-to-Completion First)
+
+**SJF** runs the shortest job first (non-preemptive). For jobs arriving together, SJF is
+**optimal for average turnaround**. **STCF** is the preemptive version: if a shorter job arrives,
+preempt the running one.
+
+```
+A=100, B=10, C=10 with SJF order B,C,A: completions 10, 20, 120 -> avg = (10+20+120)/3 = 50
+```
+
+The catch: it needs to **know job lengths** in advance (rarely true), and long jobs can **starve**
+if short ones keep arriving.
+
+<KnowledgeCheck
+  id="sb-sjf"
+  type="mcq"
+  prompt="Why does SJF minimize average turnaround for jobs that arrive together?"
+  options={[
+    "It runs jobs in parallel",
+    "Finishing short jobs first reduces the waiting time summed across all jobs",
+    "It uses preemption",
+    "It ignores long jobs"
+  ]}
+  answer={1}
+  explanation="Completing short jobs early lowers the total (and thus average) completion time — the exchange argument behind SJF's optimality."
+/>
+
+## Round Robin (RR)
+
+For good **response time**, RR gives each job a small **time quantum**, cycling through the ready
+queue. No job waits long for its first turn, so response time is excellent — at the cost of more
+context switches and worse average turnaround (every job finishes later because they share).
+
+```
+A=B=C=5, quantum=1: they interleave; all finish near the end -> good response, worse turnaround
+```
+
+The **quantum trade-off**: too small → responsive but high context-switch overhead; too large →
+degrades toward FIFO (poor response). Real systems pick a few milliseconds.
+
+<KnowledgeCheck
+  id="sb-rr"
+  type="mcq"
+  prompt="What does shrinking the Round Robin time quantum do?"
+  options={[
+    "Improves turnaround, worsens response",
+    "Improves response time but increases context-switch overhead",
+    "Has no effect",
+    "Eliminates context switches"
+  ]}
+  answer={1}
+  explanation="Smaller quanta cycle the queue faster (better response) but switch more often (overhead); too large approaches FIFO."
+/>
+
+## No single winner
+
+- **FIFO**: simple; convoy effect.
+- **SJF/STCF**: optimal turnaround; needs job lengths; can starve long jobs.
+- **RR**: great response; worse turnaround; quantum tuning.
+
+Real schedulers can't know job lengths and must balance both metrics — leading to **MLFQ**, next.
+
+## Practice
+
+Two scheduling sims below: compute **FIFO turnaround** and the **Round Robin completion order**.
+
+Next: **Multi-Level Feedback Queue** — approximating SJF without knowing the future.

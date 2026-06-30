@@ -1,0 +1,83 @@
+# Proportional-Share Scheduling
+
+Instead of optimizing turnaround or response, **proportional-share** schedulers aim for
+**fairness**: each job should get a CPU share proportional to its assigned weight. This model
+underlies modern fair schedulers and resource-control systems (cgroups, container CPU limits).
+
+## Lottery scheduling
+
+Give each job some number of **tickets** proportional to its desired share. At each scheduling
+decision, **draw a random ticket**; the job holding it runs the next slice. Over time, a job with
+more tickets wins proportionally more often, so it gets proportionally more CPU.
+
+```
+A holds 75 tickets, B holds 25 (total 100).
+Each tick: random number in [0,100); if < 75, run A, else run B.
+Over many ticks, A runs ~75% of the time, B ~25%.
+```
+
+Lottery is simple, requires no global state, and degrades gracefully — but it's **probabilistic**,
+so short runs can deviate from the exact ratio.
+
+<KnowledgeCheck
+  id="ps-lottery"
+  type="mcq"
+  prompt="In lottery scheduling, how is CPU share controlled?"
+  options={[
+    "By job length",
+    "By the number of tickets a job holds (more tickets -> proportionally more CPU over time)",
+    "By arrival order",
+    "By priority levels only"
+  ]}
+  answer={1}
+  explanation="A job's CPU share is proportional to its fraction of total tickets, realized over many random draws."
+/>
+
+## Stride scheduling
+
+**Stride** makes proportional share **deterministic**. Each job has a **stride** inversely
+proportional to its tickets (`stride = BIG / tickets`) and a running **pass** value. Always run the
+job with the **lowest pass**, then add its stride to its pass. More tickets → smaller stride → pass
+grows slower → runs more often. No randomness, exact proportions.
+
+```
+A: tickets 100 -> stride 1;  B: tickets 50 -> stride 2
+passes start at 0. Run lowest pass, advance by stride:
+A(0)->A.pass=1; B(0)->B.pass=2; A(1)->2; A(2)... A runs ~2x as often as B.
+```
+
+<KnowledgeCheck
+  id="ps-stride"
+  type="mcq"
+  prompt="How does stride scheduling decide who runs next?"
+  options={[
+    "Randomly by tickets",
+    "Run the job with the lowest 'pass' value, then increase its pass by its stride",
+    "Shortest job first",
+    "Round robin"
+  ]}
+  answer={1}
+  explanation="Stride is deterministic: pick the minimum pass, advance it by the job's stride (smaller stride = more tickets = runs more)."
+/>
+
+## Fairness over time
+
+Proportional share guarantees fairness **in the long run**. Lottery approaches the target ratio
+statistically; stride hits it exactly. Modern Linux uses the **Completely Fair Scheduler (CFS)**,
+which is a proportional-share design tracking each task's accumulated virtual runtime and always
+running the one that's fallen furthest behind — essentially stride scheduling's idea generalized.
+
+<Aside kind="insight">
+Lottery vs. stride mirrors a common engineering choice: randomized (simple, stateless,
+approximate) vs. deterministic (exact, needs per-job state). Both achieve proportional fairness;
+pick based on whether you need exactness or simplicity.
+</Aside>
+
+## Recap
+
+- Proportional-share targets fairness: CPU share ∝ assigned weight/tickets.
+- **Lottery**: random ticket draw — simple, stateless, probabilistic.
+- **Stride**: lowest-pass-runs, advance by stride — deterministic, exact.
+- Modern fair schedulers (Linux CFS) generalize the proportional-share idea via virtual runtime.
+
+That wraps Module M8 — you can reason about every major CPU-scheduling policy and their trade-offs.

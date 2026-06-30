@@ -1,0 +1,20 @@
+Compute the total **turnaround time** for a set of jobs under FIFO scheduling. All jobs arrive at
+time 0 and run to completion in array order, so each job's turnaround equals its completion time.
+
+## Your task
+
+In `fifosched.c`, implement:
+
+```c
+long total_turnaround_fifo(const int *burst, int n);
+```
+
+Return the sum over all jobs of their completion time, where job `i` completes at
+`burst[0] + burst[1] + ... + burst[i]`.
+
+## Hints (no spoilers)
+
+- Keep a running sum `clock` of elapsed time. For each job, add its burst to `clock`, then add
+  `clock` (its completion time) to the total.
+
+Use **Run** to experiment and **Submit** to grade.

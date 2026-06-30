@@ -991,6 +991,71 @@ int main(void) {
 #include "impl.c"
 `;
 
+const FIFOSCHED_HEADER = `#ifndef FIFOSCHED_H
+#define FIFOSCHED_H
+long total_turnaround_fifo(const int *burst, int n);
+#endif
+`;
+
+const FIFOSCHED_DRIVER = `#include "fifosched.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  { int b[] = {100, 10, 10}; CHECK("convoy", total_turnaround_fifo(b, 3) == 330, "100+110+120 should be 330"); }
+  { int b[] = {7};           CHECK("single", total_turnaround_fifo(b, 1) == 7, "single job total 7"); }
+  { int b[] = {5, 5};        CHECK("two", total_turnaround_fifo(b, 2) == 15, "5+10 should be 15"); }
+  { int b[] = {1, 2, 3};     CHECK("increasing", total_turnaround_fifo(b, 3) == 10, "1+3+6 should be 10"); }
+  { int b[] = {2, 2, 2, 2, 2}; CHECK("five", total_turnaround_fifo(b, 5) == 30, "2+4+6+8+10 should be 30"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const RRSCHED_HEADER = `#ifndef RRSCHED_H
+#define RRSCHED_H
+void rr_order(const int *burst, int n, int quantum, int *order_out);
+#endif
+`;
+
+const RRSCHED_DRIVER = `#include "rrsched.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+static int arr_eq(const int *a, const int *b, int n) { for (int i = 0; i < n; i++) if (a[i] != b[i]) return 0; return 1; }
+
+int main(void) {
+  { int b[] = {5, 5, 5}; int out[3]; int exp[] = {0, 1, 2}; rr_order(b, 3, 5, out);
+    CHECK("single_each", arr_eq(out, exp, 3), "each finishes in one quantum -> 0,1,2"); }
+  { int b[] = {3, 1, 2}; int out[3]; int exp[] = {1, 2, 0}; rr_order(b, 3, 1, out);
+    CHECK("q1_mixed", arr_eq(out, exp, 3), "expected completion order 1,2,0"); }
+  { int b[] = {2, 4, 1}; int out[3]; int exp[] = {0, 1, 2}; rr_order(b, 3, 10, out);
+    CHECK("big_quantum", arr_eq(out, exp, 3), "large quantum behaves like FIFO -> 0,1,2"); }
+  { int b[] = {5, 3}; int out[2]; int exp[] = {1, 0}; rr_order(b, 2, 2, out);
+    CHECK("q2_two", arr_eq(out, exp, 2), "expected completion order 1,0"); }
+  { int b[] = {4, 1, 3, 1}; int out[4]; int exp[] = {1, 3, 0, 2}; rr_order(b, 4, 2, out);
+    CHECK("four", arr_eq(out, exp, 4), "expected completion order 1,3,0,2"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -1429,6 +1494,46 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       concurrent_pop: "hidden",
       push_pop_sum: "hidden",
       stress: "hidden",
+    },
+  },
+
+  "m8-p-fifo-turnaround": {
+    id: "m8-p-fifo-turnaround",
+    languageId: 50,
+    header: { name: "fifosched.h", content: FIFOSCHED_HEADER },
+    driver: FIFOSCHED_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "fifosched.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      convoy: "sample",
+      single: "hidden",
+      two: "hidden",
+      increasing: "hidden",
+      five: "hidden",
+    },
+  },
+
+  "m8-p-rr-order": {
+    id: "m8-p-rr-order",
+    languageId: 50,
+    header: { name: "rrsched.h", content: RRSCHED_HEADER },
+    driver: RRSCHED_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "rrsched.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      single_each: "sample",
+      q1_mixed: "hidden",
+      big_quantum: "hidden",
+      q2_two: "hidden",
+      four: "hidden",
     },
   },
 };

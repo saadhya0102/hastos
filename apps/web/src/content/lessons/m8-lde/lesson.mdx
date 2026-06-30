@@ -1,0 +1,78 @@
+# Limited Direct Execution
+
+To virtualize the CPU among many processes, the OS faces a tension: it wants programs to run
+**directly on the hardware** (for speed), but it must also stay **in control** (for protection and
+fairness). The answer is **limited direct execution (LDE)** — run user code directly, but with
+hardware-enforced limits and a way for the OS to regain the CPU.
+
+## Direct execution, with limits
+
+"Direct execution" means the CPU runs the program's actual instructions — no interpretation, full
+speed. The "limited" part adds two safeguards:
+
+- **Restricted operations** run only in kernel mode. A user program can't do privileged things
+  (talk to devices, change page tables) directly — it must **trap** into the kernel via a system
+  call (recall the ECF module).
+- **The OS can take the CPU back.** Otherwise a process that never yields (an infinite loop) would
+  hog the CPU forever.
+
+<KnowledgeCheck
+  id="lde-why"
+  type="mcq"
+  prompt="What problem does 'limited' direct execution solve over plain direct execution?"
+  options={[
+    "It makes code run faster",
+    "It keeps the OS in control (protection + ability to regain the CPU) while still running user code directly",
+    "It compiles code",
+    "It removes the need for processes"
+  ]}
+  answer={1}
+  explanation="LDE runs user code directly for speed but adds privilege restrictions and a way for the OS to reclaim the CPU."
+/>
+
+## Regaining control: the timer interrupt
+
+How does the OS get the CPU back from a running process? Not by asking nicely — by the **timer
+interrupt**. The OS programs a hardware timer to fire every few milliseconds; when it does, control
+traps into the kernel regardless of what the user program was doing. The kernel's handler can then
+run the **scheduler** and possibly switch to another process.
+
+This is **preemptive** scheduling: the OS forcibly preempts the running process at timer ticks. A
+**cooperative** approach (relying on processes to yield) is fragile — one buggy loop hangs
+everything.
+
+<KnowledgeCheck
+  id="lde-timer"
+  type="mcq"
+  prompt="How does a preemptive OS regain the CPU from a process stuck in an infinite loop?"
+  options={[
+    "It asks the process to yield",
+    "A periodic timer interrupt traps into the kernel, which can switch processes",
+    "It cannot; the loop runs forever",
+    "It reboots"
+  ]}
+  answer={1}
+  explanation="The timer interrupt fires regardless of user code, letting the kernel run the scheduler and preempt the process."
+/>
+
+## Putting it together
+
+On a timer tick (or a syscall/blocking event): trap to kernel → save the current process's context
+→ run the scheduler to pick the next process → restore its context → return to user mode. That
+context switch (from the processes module) plus the timer is the complete mechanism. The *policy* —
+*which* process to pick — is the scheduler, the subject of the rest of this module.
+
+<Aside kind="insight">
+Mechanism vs. policy: LDE + context switch + timer is the **mechanism** for sharing the CPU; the
+scheduling algorithm (FIFO, RR, MLFQ...) is the **policy**. Separating the two is a recurring OS
+design principle.
+</Aside>
+
+## Recap
+
+- LDE runs user code directly but restricts privileged ops (trap to enter the kernel) and lets the
+  OS reclaim the CPU.
+- The timer interrupt enables preemption — the OS regains control even from non-yielding code.
+- Mechanism (LDE + context switch + timer) is separate from policy (the scheduling algorithm).
+
+Next: **CPU Scheduling** — the policies for choosing who runs.

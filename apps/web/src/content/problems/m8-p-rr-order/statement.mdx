@@ -1,0 +1,25 @@
+Simulate **Round-Robin scheduling** and report the order in which jobs finish. All jobs are ready
+at time 0 (in index order); each turn a job runs up to `quantum` units, then yields to the back of
+the queue if it still has work.
+
+## Your task
+
+In `rrsched.c`, implement:
+
+```c
+void rr_order(const int *burst, int n, int quantum, int *order_out);
+```
+
+Fill `order_out[0..n-1]` with job indices in the order they **complete**.
+
+## Hints (no spoilers)
+
+- Maintain a ready queue starting as `[0, 1, ..., n-1]` and a `remaining[]` array initialized to
+  `burst[]`.
+- Loop: pop the front job, run `min(remaining, quantum)`, subtract it; if `remaining > 0` push the
+  job to the back, otherwise append its index to `order_out`. Stop when all jobs are done.
+- A simple array-based circular queue (or just an index-based queue) works fine.
+
+Example: bursts `[3,1,2]`, quantum `1` → completion order `1, 2, 0`.
+
+Use **Run** to print your order and **Submit** to grade.
