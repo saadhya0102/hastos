@@ -134,9 +134,22 @@ export function SlavaPanel() {
 
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
         {messages.length === 0 && (
-          <div className="rounded-lg border border-dashed border-border p-4 text-sm text-muted">
-            Ask a question, request a hint, or have SLAVA explain a failing test. SLAVA nudges
-            first — escalate the hint level if you need more.
+          <div className="mr-6 rounded-lg bg-surface2 px-3 py-2 text-sm">
+            <div className="mb-1 flex items-center gap-2 text-xs text-muted">
+              <span>SLAVA</span>
+              <Badge tone="accent">tutor</Badge>
+            </div>
+            <div className="leading-relaxed">
+              Hi! I'm the <strong>Systems Learning Assistant for Verification and Assessment</strong>
+              {" "}— <strong>SLAVA</strong> for short. I'm here to help
+              {slava.binding.context === "problem"
+                ? ` with "${slava.binding.title ?? "this problem"}"`
+                : slava.binding.context === "lesson"
+                  ? ` with "${slava.binding.title ?? "this lesson"}"`
+                  : ""}
+              : clarify a concept, give a hint (I start with a gentle nudge — bump the level up if
+              you need more), or explain why a test failed. What are you working on?
+            </div>
           </div>
         )}
         {messages.map((m, i) => (
