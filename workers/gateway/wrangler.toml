@@ -11,7 +11,7 @@ OPENAI_BASE_URL = "https://api.openai.com/v1"
 OPENAI_MODEL = "gpt-4o-mini"
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = "llama-3.3-70b-versatile"
-ALLOWED_ORIGIN = "http://localhost:5173"
+ALLOWED_ORIGIN = "http://localhost:5173,https://hastos.web.app,https://hastos.firebaseapp.com"
 
 # Rate-limit + cache KV. Create with:
 #   wrangler kv namespace create RATELIMIT

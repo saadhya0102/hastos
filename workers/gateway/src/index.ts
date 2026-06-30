@@ -18,7 +18,7 @@ app.use("*", async (c, next) => {
 });
 
 app.get("/health", (c) =>
-  c.json({ status: "ok", service: "hasystor-gateway", time: new Date().toISOString() }),
+  c.json({ status: "ok", service: "hastos-gateway", time: new Date().toISOString() }),
 );
 
 app.post("/execute", executeRoute);
