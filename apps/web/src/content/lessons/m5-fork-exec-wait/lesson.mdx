@@ -1,0 +1,158 @@
+# Creating Processes: fork, exec, and wait
+
+Unix builds all process creation from a famously elegant (and initially confusing) trio:
+**`fork`** clones the current process, **`exec`** replaces a process's program, and **`wait`**
+lets a parent collect a finished child. Master these and you understand how shells, servers, and
+the whole process tree come to life.
+
+## fork: the function that returns twice
+
+`fork()` creates a near-identical **copy** of the calling process. The new **child** gets a copy
+of the parent's memory, file descriptors, and execution point. The mind-bending part: `fork`
+**returns twice** — once in each process:
+
+- In the **parent**, it returns the **child's PID** (a positive number).
+- In the **child**, it returns **0**.
+- On failure, it returns -1 (no child created).
+
+```c
+pid_t pid = fork();
+if (pid < 0)      { perror("fork"); }
+else if (pid == 0){ printf("I am the child\n"); }
+else              { printf("I am the parent of %d\n", pid); }
+```
+
+Both branches run — in different processes. After `fork`, the two processes execute
+independently; their memory is logically separate (copy-on-write under the hood, from Module 1's
+trivia).
+
+<KnowledgeCheck
+  id="fe-return"
+  type="mcq"
+  prompt="What does fork() return in the child process?"
+  options={["The child's PID", "0", "The parent's PID", "-1"]}
+  answer={1}
+  explanation="fork returns 0 in the child and the child's PID in the parent (and -1 on failure)."
+/>
+
+## Counting processes: the fork tree
+
+Each `fork` doubles the number of processes, because *every* existing process executes the next
+`fork`. So `n` consecutive forks produce **2^n** total processes:
+
+```c
+fork();             // 2 processes
+fork();             // each of the 2 forks -> 4 processes
+fork();             // 8 processes
+```
+
+This "fork doubling" is a classic interview question. With three forks, you have 8 processes; a
+`printf` after them runs 8 times.
+
+<KnowledgeCheck
+  id="fe-count"
+  type="numeric"
+  prompt="How many total processes exist after the original process executes 4 consecutive fork() calls?"
+  answer={16}
+  explanation="Each fork doubles the count: 2^4 = 16 processes total."
+/>
+
+<KnowledgeCheck
+  id="fe-prints"
+  type="numeric"
+  prompt="How many times does a printf placed AFTER 3 consecutive forks execute (across all processes)?"
+  answer={8}
+  explanation="3 forks create 2^3 = 8 processes, each of which then runs the printf once."
+/>
+
+## exec: replace the program
+
+`fork` makes a copy of the *same* program. To run a *different* program, the child calls an
+**`exec`** family function (`execvp`, `execlp`, ...), which **replaces** the current process's
+memory image with a new program. On success, `exec` **does not return** — there's no old code to
+return to.
+
+```c
+pid_t pid = fork();
+if (pid == 0) {
+  execlp("ls", "ls", "-l", NULL);  // child becomes 'ls'
+  perror("execlp");                // only reached if exec FAILED
+  _exit(1);
+}
+```
+
+The **fork-then-exec** pattern is exactly how a shell runs a command: fork a child, have the child
+`exec` the program, while the parent keeps control.
+
+<KnowledgeCheck
+  id="fe-exec"
+  type="mcq"
+  prompt="What happens to the calling program's code after a successful exec()?"
+  options={[
+    "exec returns and execution continues",
+    "It is replaced by the new program; exec does not return on success",
+    "Both programs run interleaved",
+    "The process exits immediately"
+  ]}
+  answer={1}
+  explanation="exec overwrites the process image with the new program, so on success there's nothing to return to — the line after exec runs only on failure."
+/>
+
+## wait: reap your children
+
+When a child finishes, it becomes a **zombie**: dead but still occupying a PCB entry that holds
+its exit status, until the parent **reaps** it with `wait` or `waitpid`. Forgetting to reap leaks
+zombies (and eventually PIDs).
+
+```c
+pid_t pid = fork();
+if (pid == 0) { /* child */ _exit(42); }
+int status;
+waitpid(pid, &status, 0);                 // parent blocks until child exits
+if (WIFEXITED(status))
+  printf("child exited with %d\n", WEXITSTATUS(status));  // 42
+```
+
+If the parent dies first, the child is **re-parented to init (PID 1)**, which reaps it — so
+orphans don't leak, but zombies (parent alive, not reaping) do.
+
+<KnowledgeCheck
+  id="fe-zombie"
+  type="mcq"
+  prompt="What is a zombie process?"
+  options={[
+    "A process stuck in an infinite loop",
+    "A terminated child whose exit status hasn't been collected by its parent via wait",
+    "A process with no memory",
+    "A background process"
+  ]}
+  answer={1}
+  explanation="A zombie is a finished child still holding a PCB entry until the parent reaps it with wait/waitpid."
+/>
+
+<KnowledgeCheck
+  id="fe-orphan"
+  type="mcq"
+  prompt="If a parent exits before its still-running child, what happens to the child?"
+  options={[
+    "The child is killed",
+    "The child becomes an orphan, re-parented to init (PID 1), which will reap it",
+    "The child becomes a zombie forever",
+    "Nothing changes"
+  ]}
+  answer={1}
+  explanation="Orphans are adopted by init/PID 1, which reaps them — so orphans don't leak; unreaped zombies (parent alive) do."
+/>
+
+## Recap
+
+- `fork` clones the process and returns twice: child PID to parent, 0 to child.
+- `n` consecutive forks → 2^n processes (and 2^n runs of code after them).
+- `exec` replaces the process image and doesn't return on success; fork+exec runs new programs.
+- `wait`/`waitpid` reap children; unreaped finished children are zombies; orphans go to init.
+
+## Practice
+
+Encode the fork-doubling rule in the **Fork Counter** problem below.
+
+Next: **Signals and Async-Safety** — asynchronous notifications and their hazards.

@@ -1,0 +1,156 @@
+# Signals and Async-Safety
+
+A **signal** is a small asynchronous notification the kernel delivers to a process — a software
+analog of a hardware interrupt. They power Ctrl-C, child-death notifications, timers, and crash
+reporting. They're also a notorious source of subtle bugs because a handler can fire *between any
+two instructions* of your program.
+
+## Signals as software interrupts
+
+Each signal has a number and a default action. Common ones:
+
+- `SIGINT` (2) — interrupt from the keyboard (Ctrl-C); default: terminate.
+- `SIGTERM` (15) — polite termination request.
+- `SIGKILL` (9) — forced kill; **cannot** be caught or ignored.
+- `SIGSEGV` (11) — invalid memory access; default: terminate (+ core dump).
+- `SIGCHLD` (17) — a child stopped or terminated (used to reap children).
+- `SIGALRM` (14) — a timer expired.
+
+A process can **catch** most signals by installing a **handler**, **ignore** them, or accept the
+**default**.
+
+<KnowledgeCheck
+  id="sg-kill"
+  type="mcq"
+  prompt="Which signal cannot be caught, blocked, or ignored?"
+  options={["SIGINT", "SIGTERM", "SIGKILL", "SIGCHLD"]}
+  answer={2}
+  explanation="SIGKILL (and SIGSTOP) are uncatchable by design, guaranteeing the OS can always terminate/stop a process."
+/>
+
+## Installing a handler
+
+Use `sigaction` (preferred over the older `signal`):
+
+```c
+#include <signal.h>
+volatile sig_atomic_t got_sigint = 0;
+
+void on_sigint(int sig) { got_sigint = 1; }   // keep handlers tiny!
+
+int main(void) {
+  struct sigaction sa = {0};
+  sa.sa_handler = on_sigint;
+  sigaction(SIGINT, &sa, NULL);
+  while (!got_sigint) { /* work */ }
+  return 0;
+}
+```
+
+When `SIGINT` arrives, normal flow is suspended, the handler runs, then flow resumes. The handler
+can fire at essentially any point — which is the source of danger.
+
+<KnowledgeCheck
+  id="sg-when"
+  type="mcq"
+  prompt="When can a signal handler run, relative to your main code?"
+  options={[
+    "Only at function boundaries",
+    "Essentially between any two machine instructions, asynchronously",
+    "Only when you call wait()",
+    "Never during main"
+  ]}
+  answer={1}
+  explanation="Handlers fire asynchronously and can interrupt the program between arbitrary instructions, which is why handler code must be extremely careful."
+/>
+
+## Async-signal-safety
+
+Because a handler can interrupt the main program mid-operation, it must only call
+**async-signal-safe** functions — ones safe to invoke from a handler. Critically, most of the
+standard library is **not** safe: `printf`, `malloc`, and friends use shared internal state and
+locks; if a signal hits while `malloc` holds its lock and the handler also calls `malloc`, you can
+**deadlock or corrupt the heap**.
+
+Safe functions are a short list (e.g., `write`, `_exit`, `signal-safe` syscalls). The disciplined
+pattern: **handlers do almost nothing** — set a `volatile sig_atomic_t` flag (or `write` a byte to
+a self-pipe) and let the main loop do the real work.
+
+<KnowledgeCheck
+  id="sg-safe"
+  type="mcq"
+  prompt="Why is calling printf() inside a signal handler dangerous?"
+  options={[
+    "printf is too slow",
+    "printf is not async-signal-safe; interrupting its internal locks/state can deadlock or corrupt",
+    "printf can't print in handlers",
+    "It always crashes"
+  ]}
+  answer={1}
+  explanation="Non-async-signal-safe functions use shared state/locks; a handler interrupting them mid-update can deadlock or corrupt — use write() and flags instead."
+/>
+
+## sig_atomic_t and volatile
+
+A flag shared between a handler and main code must be `volatile sig_atomic_t`:
+
+- **`sig_atomic_t`** — a type guaranteed to be read/written atomically (no torn access) with
+  respect to signals.
+- **`volatile`** — tells the compiler the value can change asynchronously, so it won't cache it in
+  a register or optimize the check away.
+
+```c
+volatile sig_atomic_t stop = 0;
+void handler(int s){ stop = 1; }
+/* main loop checks `stop` */
+```
+
+<KnowledgeCheck
+  id="sg-atomic"
+  type="mcq"
+  prompt="Why declare a handler/main shared flag as `volatile sig_atomic_t`?"
+  options={[
+    "For speed",
+    "sig_atomic_t guarantees atomic access; volatile stops the compiler from caching/optimizing away the reads",
+    "It is required syntax for handlers",
+    "To make it global"
+  ]}
+  answer={1}
+  explanation="sig_atomic_t avoids torn reads/writes across the async boundary; volatile ensures the main loop actually re-reads it."
+/>
+
+## EINTR: interrupted system calls
+
+A signal can interrupt a blocking syscall (like `read`), which then returns -1 with `errno ==
+EINTR` — *before* doing its work. Robust code retries:
+
+```c
+ssize_t n;
+do { n = read(fd, buf, len); } while (n < 0 && errno == EINTR);
+```
+
+Or install handlers with `SA_RESTART` so the kernel auto-restarts many interrupted calls.
+
+<KnowledgeCheck
+  id="sg-eintr"
+  type="mcq"
+  prompt="A read() returns -1 with errno == EINTR. What does that mean and what should you do?"
+  options={[
+    "A fatal error; exit",
+    "A signal interrupted the call before it finished; retry the call",
+    "End of file; stop reading",
+    "The fd is invalid; close it"
+  ]}
+  answer={1}
+  explanation="EINTR means a signal interrupted the blocking call; the standard fix is to retry (or use SA_RESTART)."
+/>
+
+## Recap
+
+- Signals are asynchronous software interrupts; some (SIGKILL/SIGSTOP) can't be caught.
+- Handlers can fire between any instructions, so they must be tiny and async-signal-safe — avoid
+  `printf`/`malloc`; prefer setting a flag or `write` to a self-pipe.
+- Share state via `volatile sig_atomic_t`.
+- Handle `EINTR` by retrying interrupted syscalls (or use `SA_RESTART`).
+
+Next: **Pipes and a Tiny Shell** — wiring processes together.

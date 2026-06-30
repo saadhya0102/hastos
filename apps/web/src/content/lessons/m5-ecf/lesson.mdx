@@ -1,0 +1,115 @@
+# Exceptional Control Flow: Exceptions, Interrupts, Traps
+
+So far, control flow has followed your code: jumps, calls, returns. But systems must also react to
+events the program didn't plan for — a timer firing, a key pressed, a divide-by-zero, a system
+call. These abrupt transfers are **exceptional control flow (ECF)**, and they're the mechanism
+that makes operating systems, multitasking, and I/O possible.
+
+## Why ECF exists
+
+A CPU executes one instruction stream, but the real world is full of asynchronous events and
+exceptional conditions. ECF lets the hardware and OS **interrupt the normal flow** to handle
+them, then (usually) resume. Every layer of systems relies on it: the OS uses a timer interrupt
+to switch processes, syscalls to enter the kernel, and faults to implement virtual memory.
+
+<KnowledgeCheck
+  id="ecf-why"
+  type="mcq"
+  prompt="What is exceptional control flow (ECF)?"
+  options={[
+    "Using exceptions in C++",
+    "Abrupt changes in control flow triggered by events/conditions, handled by hardware + OS",
+    "A faster kind of function call",
+    "Errors in your code"
+  ]}
+  answer={1}
+  explanation="ECF is the mechanism by which hardware/OS divert the instruction stream to handle events (interrupts, traps, faults) and usually resume."
+/>
+
+## The four classes of exceptions
+
+When an exception occurs, the CPU transfers control through an **exception table** to a handler in
+the OS. Four kinds, distinguished by cause and what happens after:
+
+- **Interrupt** (asynchronous) — caused by an *external* device (timer, keyboard, NIC). Not tied
+  to any instruction. After handling, control returns to the *next* instruction. This is how the
+  OS regains the CPU and how I/O completion is signaled.
+- **Trap** (synchronous, intentional) — deliberately triggered by an instruction, most importantly
+  the **system call** (`syscall`). Returns to the *next* instruction. Traps are the user→kernel
+  doorway.
+- **Fault** (synchronous, possibly recoverable) — an error the handler may fix and **retry** the
+  faulting instruction (e.g., a **page fault** loads the missing page, then re-runs the access).
+  If unrecoverable (e.g., a segfault), it kills the process.
+- **Abort** (synchronous, fatal) — unrecoverable hardware error; the program/system is terminated.
+
+<KnowledgeCheck
+  id="ecf-interrupt"
+  type="mcq"
+  prompt="Which exception type is asynchronous (not caused by the current instruction)?"
+  options={["Trap", "Fault", "Interrupt", "Abort"]}
+  answer={2}
+  explanation="Interrupts come from external devices (timer, I/O) and are asynchronous to the instruction stream; traps/faults/aborts are synchronous."
+/>
+
+<KnowledgeCheck
+  id="ecf-fault"
+  type="mcq"
+  prompt="A page fault loads the missing page and then does what?"
+  options={[
+    "Skips the instruction",
+    "Re-executes the faulting instruction (which now succeeds)",
+    "Terminates the process always",
+    "Returns to the previous instruction"
+  ]}
+  answer={1}
+  explanation="A recoverable fault fixes the condition and retries the same instruction — the basis of demand paging."
+/>
+
+## User mode vs. kernel mode
+
+The CPU runs in one of two privilege levels:
+
+- **User mode** — restricted: cannot execute privileged instructions or touch hardware/other
+  processes' memory directly. Your programs run here.
+- **Kernel mode** — full privileges: the OS runs here, able to do anything.
+
+You can't just "switch to kernel mode" — that would defeat protection. The *only* ways in are via
+ECF: an interrupt, fault, or **trap (syscall)**. The handler runs in kernel mode, does the
+privileged work, and returns control to user mode.
+
+<KnowledgeCheck
+  id="ecf-mode"
+  type="mcq"
+  prompt="How does a user program get the kernel to do privileged work (like reading a file)?"
+  options={[
+    "It switches to kernel mode directly",
+    "It issues a system call (a trap), transferring control to a kernel handler",
+    "It can't; only the kernel runs programs",
+    "By using more registers"
+  ]}
+  answer={1}
+  explanation="A syscall is a trap that safely transfers control to the kernel, which performs the privileged operation and returns."
+/>
+
+## System calls are traps
+
+When you call `read()`, `write()`, `open()`, or `fork()`, the C library ultimately executes a
+`syscall` instruction with a number identifying the operation. That trap switches to kernel mode,
+runs the kernel's handler, and returns the result (in `rax`). So the "functions" that talk to the
+OS are thin wrappers around traps — the controlled boundary between your code and the kernel.
+
+<Aside kind="insight">
+Crossing this boundary isn't free: a syscall costs hundreds of cycles (mode switch, register
+save/restore). That's why high-performance I/O batches work (e.g., read big buffers, use
+`epoll`/io_uring) to amortize syscall overhead — a theme you'll revisit in networking.
+</Aside>
+
+## Recap
+
+- ECF diverts normal control flow to handle events; it underlies multitasking, I/O, and VM.
+- Four classes: interrupt (async, external), trap (intentional, syscalls), fault (retry-able),
+  abort (fatal).
+- User mode is restricted; kernel mode is privileged; you cross over only via ECF.
+- System calls are traps — the guarded user→kernel doorway, and they aren't free.
+
+Next: **Processes and Context Switches** — the abstraction ECF makes possible.

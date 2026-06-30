@@ -455,6 +455,35 @@ int main(void) {
 #include "impl.c"
 `;
 
+const FORKCOUNT_HEADER = `#ifndef FORKCOUNT_H
+#define FORKCOUNT_H
+long processes_after_forks(int n);
+#endif
+`;
+
+const FORKCOUNT_DRIVER = `#include "forkcount.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  CHECK("zero", processes_after_forks(0) == 1L, "0 forks should be 1 process");
+  CHECK("one", processes_after_forks(1) == 2L, "1 fork should be 2 processes");
+  CHECK("three", processes_after_forks(3) == 8L, "3 forks should be 8 processes");
+  CHECK("ten", processes_after_forks(10) == 1024L, "10 forks should be 1024 processes");
+  CHECK("thirtyone", processes_after_forks(31) == 2147483648L, "31 forks should be 2^31 processes");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -693,6 +722,26 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       strong_wins: "hidden",
       multiple_strong: "hidden",
       undefined: "hidden",
+    },
+  },
+
+  "m5-p-fork-count": {
+    id: "m5-p-fork-count",
+    languageId: 50,
+    header: { name: "forkcount.h", content: FORKCOUNT_HEADER },
+    driver: FORKCOUNT_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "forkcount.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      zero: "sample",
+      one: "hidden",
+      three: "hidden",
+      ten: "hidden",
+      thirtyone: "hidden",
     },
   },
 };

@@ -1,0 +1,153 @@
+# Pipes and Building a Tiny Shell
+
+Everything in this module comes together here. A shell is essentially a loop that reads a command,
+**forks**, has the child **exec** the program, and **waits**. Add **pipes** and you can connect
+programs so one's output feeds another's input — the `a | b` that makes the Unix philosophy work.
+
+## File descriptors
+
+A process accesses open files, pipes, and sockets through small integers called **file
+descriptors (fds)**. By convention:
+
+- `0` = standard input (stdin)
+- `1` = standard output (stdout)
+- `2` = standard error (stderr)
+
+I/O functions operate on fds. Redirecting output is just making fd `1` refer to something else.
+
+## dup2: redirecting a descriptor
+
+`dup2(oldfd, newfd)` makes `newfd` refer to the same open file as `oldfd` (closing `newfd` first
+if needed). This is how you redirect: point fd `1` at a file or a pipe before `exec`, and the
+program — which just writes to fd `1` — ends up writing there.
+
+```c
+int fd = open("out.txt", O_WRONLY|O_CREAT|O_TRUNC, 0644);
+dup2(fd, 1);          // stdout now goes to out.txt
+printf("hello\n");    // written to out.txt
+```
+
+<KnowledgeCheck
+  id="ps-dup2"
+  type="mcq"
+  prompt="What does dup2(fd, 1) accomplish?"
+  options={[
+    "Closes fd",
+    "Makes stdout (fd 1) refer to the same file as fd — i.e., redirects stdout",
+    "Duplicates the process",
+    "Reads from fd"
+  ]}
+  answer={1}
+  explanation="dup2(oldfd, newfd) redirects newfd to oldfd's file; dup2(fd,1) sends stdout wherever fd points."
+/>
+
+## pipe: a one-way channel between processes
+
+`pipe(int fds[2])` creates a kernel buffer with two fds: `fds[0]` to **read** and `fds[1]` to
+**write**. Data written to `fds[1]` can be read from `fds[0]`. Combined with `fork` (which copies
+the fds into the child), two processes can communicate.
+
+```c
+int p[2];
+pipe(p);              // p[0] = read end, p[1] = write end
+```
+
+<KnowledgeCheck
+  id="ps-pipe"
+  type="mcq"
+  prompt="After pipe(p), which is the read end and which is the write end?"
+  options={[
+    "p[0] write, p[1] read",
+    "p[0] read, p[1] write",
+    "Both are read",
+    "Both are write"
+  ]}
+  answer={1}
+  explanation="By convention p[0] is the read end and p[1] is the write end of the pipe."
+/>
+
+## Wiring `a | b`
+
+To run `a | b`, the shell connects `a`'s stdout to `b`'s stdin via a pipe:
+
+```c
+int p[2];
+pipe(p);
+
+if (fork() == 0) {            // child A: writes
+  dup2(p[1], 1);              // stdout -> pipe write end
+  close(p[0]); close(p[1]);  // close both original fds
+  execlp("a", "a", NULL);
+  _exit(1);
+}
+if (fork() == 0) {            // child B: reads
+  dup2(p[0], 0);             // stdin <- pipe read end
+  close(p[0]); close(p[1]);
+  execlp("b", "b", NULL);
+  _exit(1);
+}
+close(p[0]); close(p[1]);    // parent closes BOTH ends
+waitpid(-1, NULL, 0);
+waitpid(-1, NULL, 0);
+```
+
+<Aside kind="pitfall">
+You must **close unused pipe ends in every process**, including the parent. A reader only sees
+end-of-file (and unblocks) once *all* write ends are closed. If the parent (or the writer itself)
+leaves a write end open, the reader hangs forever waiting for more input. Leaked pipe fds causing
+hangs is the #1 tiny-shell bug.
+</Aside>
+
+<KnowledgeCheck
+  id="ps-close"
+  type="mcq"
+  prompt="Why must every process close the pipe ends it isn't using?"
+  options={[
+    "To save memory only",
+    "A reader gets EOF only when ALL write ends are closed; a leaked write end makes the reader hang",
+    "Pipes break otherwise",
+    "It is optional"
+  ]}
+  answer={1}
+  explanation="EOF on the read end requires every write-end fd (in all processes) to be closed; a stray open write end blocks the reader indefinitely."
+/>
+
+## The shell loop
+
+A minimal shell is then:
+
+```
+loop:
+  print prompt; read a line
+  parse into command + args (and detect '|')
+  fork; in child: (set up any redirection/pipe) exec the command
+  in parent: waitpid for the child(ren)
+```
+
+Built-ins like `cd` and `exit` are handled by the shell *itself* (not via fork/exec), because they
+must change the shell's own state.
+
+<KnowledgeCheck
+  id="ps-builtin"
+  type="mcq"
+  prompt="Why must 'cd' be a shell built-in rather than an external program run via fork/exec?"
+  options={[
+    "cd is too fast to fork",
+    "A forked child changing directory wouldn't affect the parent shell; cd must change the shell's own working directory",
+    "cd needs a pipe",
+    "External programs can't take arguments"
+  ]}
+  answer={1}
+  explanation="Directory changes apply per-process; a child's chdir dies with the child, so the shell must call chdir itself."
+/>
+
+## Recap
+
+- Processes do I/O through file descriptors (0/1/2 = stdin/stdout/stderr).
+- `dup2` redirects a descriptor; `pipe` makes a read/write channel that `fork` shares.
+- `a | b` = pipe + two fork/exec children with `dup2` wiring; **close all unused ends** or the
+  reader hangs.
+- The shell loop is read → fork → (redirect) → exec → wait; built-ins like `cd` run in-shell.
+
+That completes Module M5. You can now reason about the entire life of processes — creation,
+program replacement, signaling, reaping, and inter-process plumbing.

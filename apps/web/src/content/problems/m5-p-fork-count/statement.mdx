@@ -1,0 +1,22 @@
+Encode the classic **fork-doubling** rule. After a process makes `n` consecutive `fork()` calls,
+how many processes exist in total? This is a staple interview warm-up that tests whether you
+really understand that *every* process executes the next `fork`.
+
+## Your task
+
+In `forkcount.c`, implement:
+
+```c
+long processes_after_forks(int n);
+```
+
+Return the total number of processes after `n` consecutive forks (including the original).
+`0 <= n <= 31`. **Don't actually call `fork()`** — just compute the count.
+
+## Hints (no spoilers)
+
+- Start with 1 process. The first `fork` makes 2. The second `fork` is executed by *both* of
+  those, making 4. Each fork doubles the total.
+- So the answer is `2^n`. A left shift computes powers of two: `1L << n`.
+
+Use **Run** to print a few values and **Submit** to grade.

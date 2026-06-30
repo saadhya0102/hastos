@@ -1,0 +1,120 @@
+# Processes and Context Switches
+
+The **process** is the operating system's central abstraction for a running program. It provides
+two powerful illusions that make programming sane: a **private CPU** (your code seems to run
+uninterrupted) and a **private memory** (your address space seems to be yours alone). Both are
+illusions maintained by the OS using the ECF machinery from the last lesson.
+
+## What a process provides
+
+- **Logical control flow.** Each process appears to have exclusive use of the CPU, executing its
+  instructions one after another — even though dozens of processes share a few cores. The OS
+  rapidly switches among them.
+- **Private address space.** Each process appears to own all of memory, addresses starting from
+  the same layout. Virtual memory (next module) makes these private and isolated.
+
+Together: you write a program as if it's the only thing running. The OS multiplexes reality
+behind that abstraction.
+
+<KnowledgeCheck
+  id="pr-illusion"
+  type="mcq"
+  prompt="Which two illusions does the process abstraction provide?"
+  options={[
+    "Faster CPU and more RAM",
+    "A private (logical) flow of control and a private address space",
+    "Free disk and network",
+    "Automatic parallelism"
+  ]}
+  answer={1}
+  explanation="A process gives each program the illusion of its own CPU (logical control flow) and its own memory (private address space)."
+/>
+
+## The process control block and states
+
+The OS tracks each process in a **process control block (PCB)** — its saved registers,
+program counter, memory mappings, open file descriptors, process id, and more. A process moves
+among states:
+
+- **Running** — currently executing on a CPU.
+- **Ready** — runnable, waiting for a CPU.
+- **Blocked (waiting)** — waiting for an event (I/O completion, a lock, a child) and not runnable
+  until it occurs.
+- (plus **terminated/zombie** — finished, awaiting reaping).
+
+<KnowledgeCheck
+  id="pr-state"
+  type="mcq"
+  prompt="A process called read() and is waiting for disk data. What state is it in?"
+  options={["Running", "Ready", "Blocked (waiting)", "Terminated"]}
+  answer={2}
+  explanation="Waiting on I/O makes it blocked — not runnable until the data arrives, at which point it becomes ready."
+/>
+
+## Context switches
+
+To switch from process A to process B, the OS performs a **context switch**:
+
+1. Save A's CPU state (registers, PC, stack pointer) into A's PCB.
+2. Update bookkeeping (mark A ready/blocked, B running) and switch address space (load B's page
+   tables).
+3. Restore B's state from its PCB and resume B.
+
+This is triggered by ECF — typically the **timer interrupt** (so no process can hog the CPU) or
+when a process blocks. Context switches aren't free: direct cost is microseconds, but the bigger
+hit is **cold caches and TLB** afterward, since B's data isn't in the caches that A warmed.
+
+<KnowledgeCheck
+  id="pr-switch"
+  type="mcq"
+  prompt="Besides the direct register save/restore, what makes context switches expensive?"
+  options={[
+    "They require recompiling the program",
+    "Caches and the TLB are cold for the newly-scheduled process",
+    "They free all memory",
+    "They restart the OS"
+  ]}
+  answer={1}
+  explanation="After a switch, the new process's data isn't in the caches/TLB the old one warmed, so it pays many misses — often the dominant cost."
+/>
+
+## What triggers a switch
+
+- **Timer interrupt** — the scheduler periodically preempts the running process (this is how the
+  OS keeps control — recall limited direct execution).
+- **Blocking** — a process that waits on I/O or a lock voluntarily yields the CPU.
+- **Higher-priority wakeup** — an event readies a more important process.
+
+## Concurrency vs. parallelism
+
+- **Concurrency** — multiple logical flows make progress over overlapping time periods. Achievable
+  on a single core by interleaving (context switching).
+- **Parallelism** — multiple flows execute *literally at the same instant*, requiring multiple
+  cores.
+
+All parallelism is concurrency, but not vice versa. A single-core machine can run 100 concurrent
+processes (interleaved) but only 1 in true parallel.
+
+<KnowledgeCheck
+  id="pr-conc"
+  type="mcq"
+  prompt="What is the difference between concurrency and parallelism?"
+  options={[
+    "They are the same",
+    "Concurrency = overlapping progress (possible on one core); parallelism = simultaneous execution (needs multiple cores)",
+    "Parallelism is slower",
+    "Concurrency requires multiple cores"
+  ]}
+  answer={1}
+  explanation="Concurrency is about structure/interleaving (even on one core); parallelism is literal simultaneous execution on multiple cores."
+/>
+
+## Recap
+
+- A process gives the illusions of a private CPU (logical control flow) and private memory.
+- The PCB stores a process's state; processes are running, ready, or blocked.
+- Context switches save/restore state and swap address spaces; their real cost is cold caches/TLB.
+- Switches are driven by the timer interrupt or blocking. Concurrency (interleaving) differs from
+  parallelism (simultaneous, multi-core).
+
+Next: **Creating Processes** — fork, exec, and wait.
