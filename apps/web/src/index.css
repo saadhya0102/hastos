@@ -1,0 +1,100 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: 12 14 19;
+  --surface: 19 22 30;
+  --surface2: 26 30 40;
+  --border: 39 45 58;
+  --fg: 226 232 240;
+  --muted: 148 163 184;
+  --accent: 99 102 241;
+  --accent-fg: 255 255 255;
+  --ok: 34 197 94;
+  --bad: 239 68 68;
+  --warn: 245 158 11;
+  --info: 56 189 248;
+}
+
+:root.light {
+  --bg: 248 250 252;
+  --surface: 255 255 255;
+  --surface2: 241 245 249;
+  --border: 226 232 240;
+  --fg: 15 23 42;
+  --muted: 71 85 105;
+  --accent: 79 70 229;
+  --accent-fg: 255 255 255;
+  --ok: 22 163 74;
+  --bad: 220 38 38;
+  --warn: 217 119 6;
+  --info: 2 132 199;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-bg text-fg antialiased;
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+}
+
+/* Lesson prose styling */
+.prose-systems {
+  @apply text-fg leading-relaxed;
+}
+.prose-systems h1 {
+  @apply text-3xl font-bold mt-2 mb-4;
+}
+.prose-systems h2 {
+  @apply text-2xl font-semibold mt-8 mb-3 scroll-mt-24;
+}
+.prose-systems h3 {
+  @apply text-xl font-semibold mt-6 mb-2 scroll-mt-24;
+}
+.prose-systems p {
+  @apply my-4;
+}
+.prose-systems ul {
+  @apply my-4 list-disc pl-6 space-y-1;
+}
+.prose-systems ol {
+  @apply my-4 list-decimal pl-6 space-y-1;
+}
+.prose-systems a {
+  @apply text-accent underline underline-offset-2;
+}
+.prose-systems code {
+  @apply font-mono text-[0.9em] bg-surface2 px-1.5 py-0.5 rounded border border-border;
+}
+.prose-systems pre {
+  @apply font-mono text-sm bg-[#0b0e14] text-slate-100 p-4 rounded-lg overflow-x-auto my-4 border border-border;
+}
+.prose-systems pre code {
+  @apply bg-transparent border-0 p-0;
+}
+.prose-systems table {
+  @apply my-4 w-full text-left border-collapse text-sm;
+}
+.prose-systems th,
+.prose-systems td {
+  @apply border border-border px-3 py-2;
+}
+.prose-systems th {
+  @apply bg-surface2;
+}
+.prose-systems blockquote {
+  @apply border-l-4 border-accent pl-4 italic text-muted my-4;
+}
+
+/* Thin scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--border)) transparent;
+}

@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    match /progress/{uid}/{document=**} {
+      allow read, write: if isOwner(uid);
+    }
+
+    match /submissions/{uid}/{document=**} {
+      allow read: if isOwner(uid);
+      // submissions are immutable and size-capped
+      allow create: if isOwner(uid)
+        && request.resource.data.source is string
+        && request.resource.data.source.size() <= 65536;
+      allow update, delete: if false;
+    }
+
+    match /conversations/{uid}/{document=**} {
+      allow read, write: if isOwner(uid);
+    }
+
+    match /review/{uid}/{document=**} {
+      allow read, write: if isOwner(uid);
+    }
+
+    match /snippets/{uid}/{document=**} {
+      allow read, write: if isOwner(uid);
+    }
+
+    match /leaderboard/{period}/entries/{uid} {
+      allow read: if request.auth != null;
+      allow write: if isOwner(uid);
+    }
+  }
+}

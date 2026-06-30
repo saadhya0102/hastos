@@ -1,0 +1,23 @@
+{
+  "name": "hastos",
+  "private": true,
+  "version": "0.1.0",
+  "description": "HastOS — systems-programming edtech platform with SLAVA (AI tutor), an in-browser IDE, and a full systems curriculum.",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "workers/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @hasystor/web",
+    "build": "npm run build --workspace @hasystor/shared && npm run build --workspace @hasystor/content-schema && npm run build --workspace @hasystor/web",
+    "build:web": "npm run build --workspace @hasystor/web",
+    "build:worker": "npm run build --workspace @hasystor/gateway",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

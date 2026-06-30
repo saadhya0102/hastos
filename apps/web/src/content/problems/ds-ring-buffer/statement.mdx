@@ -1,0 +1,24 @@
+A **ring buffer** (circular buffer) reuses a fixed-size array by wrapping indices around
+the ends. It is the backbone of queues, audio and I/O pipelines, and lock-free
+single-producer/single-consumer channels. Here you will implement a correct, fixed-capacity
+FIFO ring buffer over a caller-provided array whose capacity is a power of two.
+
+## Your task
+
+Implement the four functions in `ringbuf.c` (the header `ringbuf.h` is given and read-only):
+
+- `rb_init(rb, storage, cap)` — set up the buffer over `storage` (`cap` is a power of two).
+- `rb_push(rb, value)` — append a value; return `1` on success, `0` if the buffer is full
+  (do **not** overwrite existing data).
+- `rb_pop(rb, out)` — remove the oldest value into `*out`; return `1`, or `0` if empty.
+- `rb_count(rb)` — return the current number of elements.
+
+## Hints (no spoilers)
+
+- A power-of-two capacity lets you wrap an index with `& (cap - 1)` instead of `%`.
+- Track `count` so you can distinguish *full* from *empty* when `head == tail`.
+
+Your submission is compiled together with a hidden test driver and graded against multiple
+cases (basic FIFO, full/empty edge cases, wraparound, and a randomized stress test), with
+AddressSanitizer enabled to catch out-of-bounds access. Use **Run** to experiment and
+**Submit** to grade. Stuck? Ask **SLAVA** for a nudge.

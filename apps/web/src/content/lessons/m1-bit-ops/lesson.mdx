@@ -1,0 +1,90 @@
+# Bit-Level Operations and Masks
+
+Systems code constantly manipulates individual bits: flags in a status register,
+permission bits, and compact data structures. C gives you operators that act on the
+binary representation of a value directly. This lesson builds the core idioms you will
+reuse everywhere — from device drivers to lock-free code.
+
+## The operators
+
+There are six bit-level operators in C:
+
+- `&` — **AND**: a bit is `1` only if *both* inputs are `1`.
+- `|` — **OR**: a bit is `1` if *either* input is `1`.
+- `^` — **XOR**: a bit is `1` if the inputs *differ*.
+- `~` — **NOT**: flips every bit.
+- `<<` — **left shift**: moves bits toward the high end (multiply by powers of two).
+- `>>` — **right shift**: moves bits toward the low end.
+
+<Aside kind="pitfall">
+`&&` and `||` are *logical* operators — they evaluate truthiness and yield `0` or `1`.
+`&` and `|` are *bitwise*. Writing `a & b` when you meant `a && b` (or vice versa) is a
+classic, hard-to-spot bug.
+</Aside>
+
+## Masks: the core idiom
+
+A *mask* is a value chosen so a bitwise operation affects only the bits you care about.
+The building block is `1u << k`, which is a value with a single `1` at position `k`.
+
+- **Set bit k:** `x | (1u << k)`
+- **Clear bit k:** `x & ~(1u << k)`
+- **Toggle bit k:** `x ^ (1u << k)`
+- **Test bit k:** `(x >> k) & 1u`
+
+<KnowledgeCheck
+  id="bitops-q1"
+  type="mcq"
+  prompt="Which expression clears (sets to 0) bit k of x, leaving all other bits unchanged?"
+  options={["x | (1u << k)", "x & ~(1u << k)", "x ^ (1u << k)", "x & (1u << k)"]}
+  answer={1}
+  explanation="~(1u << k) is all ones except a zero at position k; ANDing keeps every other bit and forces bit k to 0."
+/>
+
+## Logical vs arithmetic shift
+
+For **unsigned** values, `>>` shifts in zeros (a *logical* shift). For **signed** negative
+values, `>>` is implementation-defined, but in practice it is *arithmetic* (it copies the
+sign bit). The safe habit: use unsigned types when you are doing bit twiddling.
+
+<KnowledgeCheck
+  id="bitops-q2"
+  type="predict-output"
+  prompt="What does this program print?"
+  code={`unsigned x = 0xF0u;
+printf("%u\\n", (x >> 4) & 0xF);`}
+  answer="15"
+  explanation="0xF0 >> 4 is 0x0F = 15; masking with 0xF keeps the low nibble, which is already 15."
+/>
+
+## Try it yourself
+
+The snippet below starts with the byte `0b10110100`. It sets bit 0, clears bit 2, and
+toggles bit 7. Run it and confirm the result is `0x35`.
+
+<MiniIDE language="c" starter={`#include <stdio.h>
+int main(void) {
+  unsigned x = 0xB4u;     /* 0b1011 0100 */
+  x = x | (1u << 0);      /* set bit 0   */
+  x = x & ~(1u << 2);     /* clear bit 2 */
+  x = x ^ (1u << 7);      /* toggle bit 7 */
+  printf("0x%X\\n", x);
+  return 0;
+}`} />
+
+<KnowledgeCheck
+  id="bitops-q3"
+  type="numeric"
+  prompt="How many 1-bits are set in the value 0xB4 (0b10110100)?"
+  answer={4}
+  explanation="0b1011 0100 has bits set at positions 2, 4, 5, 7 — four ones."
+/>
+
+## Recap
+
+- `&` keeps, `|` sets, `^` toggles, `~` flips.
+- Build single-bit masks with `1u << k`.
+- Prefer unsigned types so right shifts behave predictably.
+
+Next up: how integers are actually represented, why signed overflow is undefined, and how
+two's complement makes subtraction "just work".

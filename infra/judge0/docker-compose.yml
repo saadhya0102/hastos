@@ -1,0 +1,67 @@
+# Self-hosted Judge0 for HastOS code execution (PRD §11.7 / §22.2).
+# Lock down for production: keep ENABLE_NETWORK=false, set conservative limits,
+# and front it with the Cloudflare Worker (never expose Judge0 directly to browsers).
+#
+# Usage:
+#   cp judge0.conf.example judge0.conf   # set REDIS/POSTGRES passwords + an AUTH token
+#   docker compose up -d
+# Then point the Worker secret JUDGE0_URL at http://<host>:2358 and JUDGE0_AUTH_TOKEN.
+
+x-judge0-env: &judge0-env
+  REDIS_HOST: redis
+  POSTGRES_HOST: db
+  POSTGRES_DB: judge0
+  POSTGRES_USER: judge0
+  POSTGRES_PASSWORD: change-me
+  # Security defaults
+  ENABLE_NETWORK: "false"
+  CPU_TIME_LIMIT: "5"
+  CPU_EXTRA_TIME: "1"
+  WALL_TIME_LIMIT: "12"
+  MEMORY_LIMIT: "262144"
+  MAX_PROCESSES_AND_OR_THREADS: "60"
+  ENABLE_PER_PROCESS_AND_THREAD_TIME_LIMIT: "false"
+  MAX_FILE_SIZE: "10240"
+  # Require an auth token on every request
+  AUTHN_HEADER: "X-Auth-Token"
+  AUTHN_TOKEN: "change-me-auth-token"
+
+services:
+  server:
+    image: judge0/judge0:1.13.1
+    command: ["./scripts/server"]
+    environment: *judge0-env
+    ports:
+      - "2358:2358"
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  workers:
+    image: judge0/judge0:1.13.1
+    command: ["./scripts/workers"]
+    environment: *judge0-env
+    privileged: true
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: judge0
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: change-me
+    volumes:
+      - judge0-db:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "no"]
+    restart: unless-stopped
+
+volumes:
+  judge0-db:

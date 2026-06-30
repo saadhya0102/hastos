@@ -1,0 +1,17 @@
+# Local secrets for `wrangler dev`. Copy to `.dev.vars` and fill in. Never commit `.dev.vars`.
+
+# AI providers
+OPENAI_API_KEY=sk-...
+GROQ_API_KEY=gsk_...
+
+# Judge0 (self-hosted or RapidAPI)
+# Self-hosted example:
+JUDGE0_URL=http://localhost:2358
+JUDGE0_AUTH_TOKEN=
+# RapidAPI example (uncomment + set host; JUDGE0_AUTH_TOKEN becomes the RapidAPI key):
+# JUDGE0_URL=https://judge0-ce.p.rapidapi.com
+# JUDGE0_AUTH_TOKEN=your-rapidapi-key
+# JUDGE0_RAPIDAPI_HOST=judge0-ce.p.rapidapi.com
+
+# Firebase (for ID token verification in production; ALLOW_ANON=true bypasses in dev)
+FIREBASE_PROJECT_ID=your-project-id
