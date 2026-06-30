@@ -1,20 +1,43 @@
 # Bit-Level Operations and Masks
 
-Systems code constantly manipulates individual bits: flags in a status register,
-permission bits, and compact data structures. C gives you operators that act on the
-binary representation of a value directly. This lesson builds the core idioms you will
-reuse everywhere — from device drivers to lock-free code.
+Systems code constantly manipulates individual bits: flags in a status register, permission
+bits, compact data structures, color channels, hardware registers. C gives you operators that
+act on the binary representation of a value directly. This lesson builds the core idioms
+you'll reuse everywhere — from device drivers to lock-free code to the ring buffer you'll
+implement at the end.
 
-## The operators
+## Bits, positions, and a byte
 
-There are six bit-level operators in C:
+A `uint8_t` is 8 bits. We number positions from the **least significant bit (LSB)** at
+position 0 on the right, up to the **most significant bit (MSB)** on the left:
+
+```
+position:   7   6   5   4   3   2   1   0
+bit:        1   0   1   1   0   1   0   0    =  0xB4  =  180
+            ^MSB                        ^LSB
+```
+
+The value at position `k` contributes `2^k` when set. So bit 2 is worth 4, bit 7 is worth
+128. The byte above is `128 + 32 + 16 + 4 = 180`.
+
+<KnowledgeCheck
+  id="bo-pos"
+  type="numeric"
+  prompt="What decimal value is the byte 0b00010010?"
+  answer={18}
+  explanation="Bits set at positions 4 (16) and 1 (2): 16 + 2 = 18."
+/>
+
+## The six operators
+
+C has six bit-level operators:
 
 - `&` — **AND**: a bit is `1` only if *both* inputs are `1`.
 - `|` — **OR**: a bit is `1` if *either* input is `1`.
 - `^` — **XOR**: a bit is `1` if the inputs *differ*.
 - `~` — **NOT**: flips every bit.
 - `<<` — **left shift**: moves bits toward the high end (multiply by powers of two).
-- `>>` — **right shift**: moves bits toward the low end.
+- `>>` — **right shift**: moves bits toward the low end (divide by powers of two).
 
 <Aside kind="pitfall">
 `&&` and `||` are *logical* operators — they evaluate truthiness and yield `0` or `1`.
@@ -22,10 +45,14 @@ There are six bit-level operators in C:
 classic, hard-to-spot bug.
 </Aside>
 
+Quick intuition for XOR: `x ^ x == 0`, `x ^ 0 == x`, and XOR is its own inverse — applying
+the same mask twice returns the original. That property powers checksums, simple ciphers, and
+the famous (if rarely used) XOR swap.
+
 ## Masks: the core idiom
 
-A *mask* is a value chosen so a bitwise operation affects only the bits you care about.
-The building block is `1u << k`, which is a value with a single `1` at position `k`.
+A *mask* is a value chosen so a bitwise operation affects only the bits you care about. The
+building block is `1u << k`: a value with a single `1` at position `k`.
 
 - **Set bit k:** `x | (1u << k)`
 - **Clear bit k:** `x & ~(1u << k)`
@@ -41,11 +68,23 @@ The building block is `1u << k`, which is a value with a single `1` at position 
   explanation="~(1u << k) is all ones except a zero at position k; ANDing keeps every other bit and forces bit k to 0."
 />
 
-## Logical vs arithmetic shift
+To operate on a *range* of bits, build a multi-bit mask. For example, the low 4 bits (a
+"nibble") are masked with `0xF` (`0b1111`):
+
+<MiniIDE language="c" starter={`#include <stdio.h>
+int main(void) {
+  unsigned x = 0xB4u;          /* 1011 0100 */
+  unsigned low  = x & 0x0Fu;   /* keep low nibble  -> 0x4 */
+  unsigned high = (x >> 4) & 0x0Fu; /* high nibble  -> 0xB */
+  printf("low=0x%X high=0x%X\\n", low, high);
+  return 0;
+}`} />
+
+## Logical vs. arithmetic shift
 
 For **unsigned** values, `>>` shifts in zeros (a *logical* shift). For **signed** negative
-values, `>>` is implementation-defined, but in practice it is *arithmetic* (it copies the
-sign bit). The safe habit: use unsigned types when you are doing bit twiddling.
+values, `>>` is implementation-defined, but in practice it is *arithmetic* (it copies the sign
+bit so the number stays negative). The safe habit: use unsigned types when doing bit twiddling.
 
 <KnowledgeCheck
   id="bitops-q2"
@@ -57,34 +96,167 @@ printf("%u\\n", (x >> 4) & 0xF);`}
   explanation="0xF0 >> 4 is 0x0F = 15; masking with 0xF keeps the low nibble, which is already 15."
 />
 
-## Try it yourself
+<Aside kind="warning">
+Shifting by an amount greater than or equal to the type's width is **undefined behavior**.
+For a 32-bit `unsigned`, `1u << 32` is UB, not `0`. Likewise, shifting a *negative* value left
+is UB. Keep shift counts in `[0, width)` and prefer unsigned operands.
+</Aside>
 
-The snippet below starts with the byte `0b10110100`. It sets bit 0, clears bit 2, and
-toggles bit 7. Run it and confirm the result is `0x35`.
+## Essential bit idioms
+
+A handful of idioms appear constantly in systems code. Learn to recognize them on sight.
+
+### Isolate the lowest set bit: `x & -x`
+Two's complement makes `-x == ~x + 1`, which leaves only the lowest set bit standing.
+
+### Clear the lowest set bit: `x & (x - 1)`
+Subtracting 1 flips the lowest set bit and all the zeros below it; ANDing clears that bit.
+
+### Test for a power of two: `x && !(x & (x - 1))`
+A power of two has exactly one set bit, so clearing the lowest set bit yields 0. (The leading
+`x &&` rejects 0, which is not a power of two.)
+
+### Count set bits (popcount), Brian Kernighan's way
+Repeatedly clear the lowest set bit; the number of iterations is the population count.
+
+<MiniIDE language="c" starter={`#include <stdio.h>
+
+int popcount(unsigned x) {
+  int count = 0;
+  while (x) { x &= (x - 1); count++; }  /* clears lowest set bit each pass */
+  return count;
+}
+
+int is_pow2(unsigned x) { return x && !(x & (x - 1)); }
+
+int main(void) {
+  printf("popcount(0xB4) = %d\\n", popcount(0xB4u)); /* 4 */
+  printf("lowest set bit of 12 = %d\\n", 12 & -12);  /* 4 */
+  printf("is_pow2(64) = %d, is_pow2(48) = %d\\n", is_pow2(64), is_pow2(48));
+  return 0;
+}`} />
+
+<KnowledgeCheck
+  id="bo-pow2"
+  type="mcq"
+  prompt="What does `x & (x - 1)` evaluate to when x is a power of two?"
+  options={["x", "0", "1", "x - 1"]}
+  answer={1}
+  explanation="A power of two has one set bit; subtracting 1 flips it and sets the lower bits, so the AND is 0. This is the basis of the power-of-two test."
+/>
+
+<KnowledgeCheck
+  id="bo-popcount"
+  type="numeric"
+  prompt="How many set bits (popcount) does 0xFF have?"
+  answer={8}
+  explanation="0xFF is 1111 1111 — all eight bits are set."
+/>
+
+## Packing and extracting fields
+
+Bits let you pack several small values into one word — common for colors, flags, and protocol
+headers. Consider a 32-bit RGBA color with 8 bits per channel:
+
+```
+bits:  31..24   23..16   15..8    7..0
+       [  R  ]  [  G  ]  [  B  ]  [  A  ]
+```
+
+To **pack**: shift each channel into place and OR them together. To **extract**: shift down
+and mask with `0xFF`.
+
+<MiniIDE language="c" starter={`#include <stdio.h>
+int main(void) {
+  unsigned r = 0x12, g = 0x34, b = 0x56, a = 0x78;
+  unsigned rgba = (r << 24) | (g << 16) | (b << 8) | a;   /* pack */
+  printf("rgba = 0x%08X\\n", rgba);
+
+  unsigned gg = (rgba >> 16) & 0xFFu;                      /* extract green */
+  printf("green = 0x%02X\\n", gg);
+  return 0;
+}`} />
+
+This is exactly how hardware registers and binary file/network formats are read and written:
+shift to the field's position, mask to its width.
+
+<KnowledgeCheck
+  id="bo-extract"
+  type="mcq"
+  prompt="Given a 32-bit RGBA packed as (R<<24)|(G<<16)|(B<<8)|A, how do you extract the Blue channel?"
+  options={[
+    "rgba & 0xFF",
+    "(rgba >> 8) & 0xFF",
+    "(rgba >> 16) & 0xFF",
+    "(rgba >> 24) & 0xFF"
+  ]}
+  answer={1}
+  explanation="Blue occupies bits 8..15, so shift right by 8 and mask the low byte with 0xFF."
+/>
+
+## Practical applications
+
+- **Flag sets / options.** Define each option as a distinct bit (`#define O_READ (1u<<0)`,
+  `O_WRITE (1u<<1)`), combine with `|`, test with `&`. This is how `open()` flags and
+  permission bits work.
+- **Bitsets.** Represent a set of up to 64 elements in a single `uint64_t`; membership tests
+  and unions/intersections become single AND/OR instructions.
+- **Hardware registers.** Device control registers pack many fields; drivers read-modify-write
+  specific bits without disturbing the rest (`reg = (reg & ~mask) | value`).
+
+## Pitfalls to internalize
+
+- **Operator precedence.** `&` has *lower* precedence than `==`. So `x & 1 == 0` parses as
+  `x & (1 == 0)` = `x & 0` = 0 — almost never what you want. Write `(x & 1) == 0`.
+- **Shift width / sign.** Don't shift by `>=` the type width, and avoid shifting signed
+  negatives. Use unsigned types.
+- **Sign extension surprises.** Right-shifting a signed negative keeps it negative; mixing
+  signed and unsigned in masks can produce unexpected high bits.
+
+<KnowledgeCheck
+  id="bo-precedence"
+  type="mcq"
+  prompt="Due to operator precedence, what does `x & 1 == 0` actually compute?"
+  options={[
+    "(x & 1) == 0",
+    "x & (1 == 0), i.e. x & 0, which is always 0",
+    "A syntax error",
+    "x == 0"
+  ]}
+  answer={1}
+  explanation="== binds tighter than &, so it's x & (1==0) = x & 0 = 0. Always parenthesize: (x & 1) == 0."
+/>
+
+## Try it: bit surgery
+
+The snippet below starts with the byte `0b10110100`. It sets bit 0, clears bit 2, and toggles
+bit 7. Run it and confirm the result is `0x35`.
 
 <MiniIDE language="c" starter={`#include <stdio.h>
 int main(void) {
   unsigned x = 0xB4u;     /* 0b1011 0100 */
-  x = x | (1u << 0);      /* set bit 0   */
-  x = x & ~(1u << 2);     /* clear bit 2 */
+  x = x | (1u << 0);      /* set bit 0    */
+  x = x & ~(1u << 2);     /* clear bit 2  */
   x = x ^ (1u << 7);      /* toggle bit 7 */
   printf("0x%X\\n", x);
   return 0;
 }`} />
 
-<KnowledgeCheck
-  id="bitops-q3"
-  type="numeric"
-  prompt="How many 1-bits are set in the value 0xB4 (0b10110100)?"
-  answer={4}
-  explanation="0b1011 0100 has bits set at positions 2, 4, 5, 7 — four ones."
-/>
-
 ## Recap
 
-- `&` keeps, `|` sets, `^` toggles, `~` flips.
-- Build single-bit masks with `1u << k`.
-- Prefer unsigned types so right shifts behave predictably.
+- Bits are numbered from LSB (position 0); position `k` is worth `2^k`.
+- `&` keeps, `|` sets, `^` toggles, `~` flips; build single-bit masks with `1u << k`.
+- Prefer unsigned types; never shift by `>=` the width.
+- Memorize the idioms: `x & -x` (lowest set bit), `x & (x-1)` (clear it / power-of-two test),
+  Kernighan's popcount.
+- Pack with shift-and-OR, extract with shift-and-mask.
+- Parenthesize bitwise expressions — `&` binds looser than `==`.
 
-Next up: how integers are actually represented, why signed overflow is undefined, and how
-two's complement makes subtraction "just work".
+## Practice
+
+The **Fixed-Capacity Ring Buffer** problem below puts masking to work: when the capacity is a
+power of two, you wrap an index with `index & (cap - 1)` instead of the slower `index % cap` —
+exactly the `x & (x - 1)` family of tricks you just learned. Give it a try.
+
+Next: how integers are actually represented, why signed overflow is undefined, and how two's
+complement makes subtraction "just work".
