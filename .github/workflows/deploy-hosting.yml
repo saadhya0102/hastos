@@ -13,6 +13,10 @@ on:
 
 jobs:
   deploy:
+    # Opt-in: set repository Variable ENABLE_DEPLOY=true (and add FIREBASE_SERVICE_ACCOUNT
+    # secret + VITE_* variables) to enable auto-deploy. Until then this job is skipped,
+    # so it won't fail on missing secrets.
+    if: ${{ vars.ENABLE_DEPLOY == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
