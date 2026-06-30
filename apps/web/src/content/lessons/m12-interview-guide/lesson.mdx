@@ -1,0 +1,112 @@
+# Acing Systems Interviews
+
+Systems and infrastructure interviews differ from generic algorithm rounds: they probe whether you
+truly understand the machine, memory, and concurrency — and whether you can *implement* the
+canonical artifacts under pressure while reasoning about trade-offs. This lesson is your playbook,
+plus a map of the problems in this course to practice.
+
+## The canonical implementation problems
+
+If you can implement these from scratch and discuss their trade-offs, you're ready for most
+systems interviews. Practice them in the **Interview Track** and the IDE:
+
+- **Concurrency** (the highest-signal area): spinlock, ticket lock, atomic counter, blocking bounded
+  queue, thread pool, **lock-free Treiber stack**, **lock-free MPSC queue**. (Module M7)
+- **Memory**: implement an **arena** and a **pool/slab allocator**; discuss fragmentation and
+  alignment. (Module M6)
+- **Data structures for systems**: **LRU cache** (O(1)), ring buffer, B-tree node search, hash map.
+  (Modules M1, M9, M11)
+- **OS / storage**: scheduler sims (RR), CLOCK page replacement, LSM merge, WAL/crash consistency.
+  (Modules M8, M9, M11)
+- **Networking**: HTTP request parser, internet checksum, server concurrency models. (Module M10)
+
+<KnowledgeCheck
+  id="ig-canonical"
+  type="mcq"
+  prompt="Which area tends to carry the highest signal in systems/infra interviews?"
+  options={[
+    "UI styling",
+    "Concurrency (locks, lock-free structures, memory ordering)",
+    "Regex",
+    "Spreadsheet formulas"
+  ]}
+  answer={1}
+  explanation="Concurrency (correct locks, lock-free queues, memory ordering) is the area that most separates strong systems candidates."
+/>
+
+## A structure for solving them
+
+Don't just start typing. Use a repeatable flow:
+
+1. **Clarify** the contract: inputs, outputs, concurrency assumptions (single vs multi consumer?),
+   constraints, and what "correct" means. State your assumptions out loud.
+2. **Design** before coding: pick the data structure and algorithm, sketch the invariants, and call
+   out the complexity. Mention the trade-off you're choosing and why.
+3. **Implement** cleanly: handle the edge cases (empty, full, n=0, overflow), and keep functions
+   small.
+4. **Test**: walk through examples, especially boundary and concurrent interleavings. Name how
+   you'd stress-test (TSan/ASan, multiple seeds).
+5. **Discuss trade-offs**: complexity, memory, contention, failure modes, and how you'd scale or
+   harden it.
+
+<KnowledgeCheck
+  id="ig-structure"
+  type="mcq"
+  prompt="What should you do BEFORE writing code in a systems interview?"
+  options={[
+    "Start typing immediately",
+    "Clarify the contract/assumptions and sketch a design with its complexity and trade-offs",
+    "Ask for the answer",
+    "Pick a random data structure"
+  ]}
+  answer={1}
+  explanation="Clarifying the contract and designing (with complexity + trade-offs) first prevents rework and signals seniority."
+/>
+
+## Communicate like a senior engineer
+
+The implementation is table stakes; the **discussion** is what levels you up:
+
+- State **complexity** (time/space) and why it's acceptable.
+- Name the **trade-off** you took (e.g., "spinlock for tiny critical sections; a mutex if contended").
+- Call out **failure modes** and **concurrency hazards** by name: data race, deadlock, ABA, false
+  sharing, lost wakeup, write amplification.
+- Mention **how you'd test** it — bounded checks, sanitizers, stress with many seeds.
+
+Interviewers probe with follow-ups; in this course every problem ships **follow-up questions** for
+exactly this. Rehearse answering them aloud.
+
+<KnowledgeCheck
+  id="ig-comm"
+  type="mcq"
+  prompt="Beyond a working implementation, what most distinguishes a strong systems candidate?"
+  options={[
+    "Typing speed",
+    "Articulating complexity, trade-offs, failure modes (race/deadlock/ABA), and a testing strategy",
+    "Using the longest variable names",
+    "Avoiding all comments"
+  ]}
+  answer={1}
+  explanation="Clear reasoning about complexity, trade-offs, named hazards, and testing is what signals senior-level systems judgment."
+/>
+
+## How to use HastOS to prepare
+
+- Work the **Interview Track** end-to-end; for each problem, implement it, then answer its
+  follow-ups out loud.
+- Use the **Mock Interview** (timed coding + trivia rounds) to simulate pressure.
+- When stuck, use **SLAVA** at the *nudge* level first — interviews reward independent problem
+  solving; escalate hints sparingly.
+- Use the **Review** queue and loading-screen **trivia** to keep the high-value facts (cache line
+  size, page size, memory ordering, ABA, amplification) sharp.
+
+## Recap
+
+- Master the canonical implementations — especially concurrency (lock-free queue, spinlock, thread
+  pool), allocators, and the LRU cache.
+- Solve with a structure: clarify → design → implement → test → discuss trade-offs.
+- Communicate complexity, trade-offs, named hazards, and testing — that's the senior signal.
+- Practice with the Interview Track, Mock Interview, SLAVA nudges, and spaced review.
+
+Congratulations — that completes the HastOS systems curriculum. You've gone from bits to databases,
+with the implementations and judgment to back it up. Now go build (and interview) with confidence.

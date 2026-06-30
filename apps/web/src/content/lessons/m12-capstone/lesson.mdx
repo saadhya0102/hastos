@@ -1,0 +1,96 @@
+# Capstone: Putting It All Together
+
+You've now climbed the whole stack — from bits and the machine, through memory, processes, and
+concurrency, up to file systems, networking, and databases. Real systems combine these subsystems,
+and the magic (and the bugs) live in their **interactions**. This capstone lesson helps you fuse the
+pieces into something whole.
+
+## The big picture
+
+Each module was a layer; here's how they connect in, say, a database server handling a request:
+
+```
+network (M10): accept connection, parse the request (HTTP/protocol framing)
+  -> concurrency (M7): a thread pool / event loop dispatches the work
+    -> storage (M11): look up keys in a B-tree or LSM, honoring MVCC snapshots
+      -> file systems (M9): read/write pages through the buffer cache; WAL for durability
+        -> virtual memory (M6): pages mapped, faulted in on demand; allocator for buffers
+          -> machine (M2/M3): cache-friendly data layout, atomics for synchronization
+```
+
+A request touches **every layer**. Performance and correctness are end-to-end properties: a great
+B-tree behind a thread-per-connection server that thrashes the scheduler still won't scale.
+
+<KnowledgeCheck
+  id="cap-layers"
+  type="mcq"
+  prompt="Why is systems performance an end-to-end property?"
+  options={[
+    "Only the CPU matters",
+    "A request crosses many layers; a bottleneck or bug in any one (I/O, locking, layout) limits the whole",
+    "Layers are independent",
+    "Only the database matters"
+  ]}
+  answer={1}
+  explanation="Each request flows through networking, concurrency, storage, FS, VM, and the machine; the weakest layer caps overall behavior."
+/>
+
+## Capstone project options
+
+Pick one and build it (using the IDE and SLAVA along the way). Each combines several modules:
+
+1. **Mini key-value server.** Combine an in-memory hash map (this module's problem) or LSM memtable
+   (M11) with a thread pool (M7) and a simple request protocol (M10), plus a WAL (M9) for
+   durability. Touches networking, concurrency, storage, and persistence.
+
+2. **Thread-caching allocator.** Extend the pool/arena allocators (M6) with per-thread caches and a
+   shared backing pool guarded by a lock or lock-free free list (M7). Touches memory + concurrency
+   + false sharing (M3).
+
+3. **End-to-end pipeline optimization.** Take a slow data-processing loop and make it fast: improve
+   cache locality and blocking (M3), parallelize with a thread pool (M7), and remove false sharing.
+   Touches performance + concurrency.
+
+<KnowledgeCheck
+  id="cap-kv"
+  type="mcq"
+  prompt="Which modules does a 'mini key-value server' capstone primarily combine?"
+  options={[
+    "Only networking",
+    "Networking (protocol), concurrency (thread pool), storage (map/LSM), and persistence (WAL)",
+    "Only the allocator",
+    "Only scheduling"
+  ]}
+  answer={1}
+  explanation="A KV server stitches together request handling, concurrent dispatch, a storage structure, and durability — a cross-module build."
+/>
+
+## How to think about interactions
+
+When you compose subsystems, watch the seams:
+
+- **Backpressure**: if the network ingests faster than storage can persist, your bounded queue
+  (M7) must throttle producers — or you'll exhaust memory.
+- **Contention**: a single global lock around the storage map becomes the bottleneck under many
+  threads; shard it or go lock-free where it matters (M7).
+- **Durability vs. latency**: `fsync` on every write (M9) is safe but slow; batch commits (group
+  commit) to amortize — a classic trade-off.
+- **Locality under concurrency**: per-thread data should be cache-line-separated to avoid false
+  sharing (M3).
+
+These are exactly the judgment calls senior systems engineers (and interviewers) care about.
+
+## Recap
+
+- Real systems compose every layer; correctness and performance are end-to-end.
+- Capstone options: a KV server, a thread-caching allocator, or a pipeline optimization — each
+  fuses multiple modules.
+- The interesting problems live at the **seams**: backpressure, contention, durability/latency,
+  locality under concurrency.
+
+## Practice
+
+Build the storage core of a KV server — an **open-addressing hash map** (put/get/delete) — in the
+problem below.
+
+Next: **Acing Systems Interviews** — turning this knowledge into offers.

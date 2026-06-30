@@ -1,0 +1,28 @@
+Implement an **open-addressing hash map** with linear probing and tombstones — the storage core of
+the capstone KV server, and a classic "implement a hash table" interview problem.
+
+## Your task
+
+In `kvmap.c`, implement (init provided):
+
+```c
+void kv_put(kvmap_t *m, int key, int val);     // insert or overwrite
+int  kv_get(kvmap_t *m, int key, int *found);  // sets *found; returns value if found
+void kv_del(kvmap_t *m, int key);              // tombstone the slot if present
+```
+
+`state[i]` is `0` empty, `1` occupied, `2` tombstone. The hash index is `(unsigned)key % cap`.
+
+## Hints (no spoilers)
+
+- **put**: linear-probe from the hash index. If you hit an occupied slot with the same key,
+  overwrite its value. Otherwise insert at the first empty *or tombstone* slot and `size++`.
+- **get**: probe while the slot is **not empty**; if occupied with the key, return it (`*found=1`).
+  Keep probing past tombstones and other keys; stop (not found) only at an **empty** slot.
+- **del**: locate the key; mark its slot a **tombstone** (not empty!) so later probes still cross
+  it, and `size--`.
+
+The crucial subtlety: deleting must leave a **tombstone**, not an empty slot — otherwise a probe
+for a key that collided *after* the deleted one would stop early and wrongly report "not found."
+
+Assume the table is never full. Use **Run** then **Submit**.

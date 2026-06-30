@@ -1265,6 +1265,49 @@ int main(void) {
 #include "impl.c"
 `;
 
+const KVMAP_HEADER = `#ifndef KVMAP_H
+#define KVMAP_H
+typedef struct { int *keys; int *vals; char *state; int cap; int size; } kvmap_t;
+void kv_init(kvmap_t *m, int *keys, int *vals, char *state, int cap);
+void kv_put(kvmap_t *m, int key, int val);
+int kv_get(kvmap_t *m, int key, int *found);
+void kv_del(kvmap_t *m, int key);
+#endif
+`;
+
+const KVMAP_DRIVER = `#include "kvmap.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  { int k[8], v[8]; char s[8]; kvmap_t m; kv_init(&m, k, v, s, 8);
+    kv_put(&m, 1, 100); int f; int val = kv_get(&m, 1, &f);
+    CHECK("put_get", f == 1 && val == 100, "put then get should return 100"); }
+  { int k[8], v[8]; char s[8]; kvmap_t m; kv_init(&m, k, v, s, 8);
+    int f; kv_get(&m, 99, &f); CHECK("missing", f == 0, "absent key should not be found"); }
+  { int k[8], v[8]; char s[8]; kvmap_t m; kv_init(&m, k, v, s, 8);
+    kv_put(&m, 1, 1); kv_put(&m, 1, 2); int f; int val = kv_get(&m, 1, &f);
+    CHECK("overwrite", f == 1 && val == 2 && m.size == 1, "overwrite should update value and keep size 1"); }
+  { int k[4], v[4]; char s[4]; kvmap_t m; kv_init(&m, k, v, s, 4);
+    kv_put(&m, 1, 10); kv_put(&m, 5, 50); int f1, f5; int a = kv_get(&m, 1, &f1); int b = kv_get(&m, 5, &f5);
+    CHECK("collision", f1 && a == 10 && f5 && b == 50, "colliding keys (1 and 5) should both be retrievable"); }
+  { int k[4], v[4]; char s[4]; kvmap_t m; kv_init(&m, k, v, s, 4);
+    kv_put(&m, 1, 10); kv_put(&m, 5, 50); kv_del(&m, 1);
+    int f5; int b = kv_get(&m, 5, &f5); int f1; kv_get(&m, 1, &f1);
+    CHECK("delete_probe", f5 && b == 50 && f1 == 0, "after deleting 1, key 5 must still be found and 1 not"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -1863,6 +1906,26 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       empty_a: "hidden",
       empty_b: "hidden",
       all_overlap: "hidden",
+    },
+  },
+
+  "m12-p-hashmap": {
+    id: "m12-p-hashmap",
+    languageId: 50,
+    header: { name: "kvmap.h", content: KVMAP_HEADER },
+    driver: KVMAP_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "kvmap.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      put_get: "sample",
+      missing: "hidden",
+      overwrite: "hidden",
+      collision: "hidden",
+      delete_probe: "hidden",
     },
   },
 };
