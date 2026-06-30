@@ -1,0 +1,132 @@
+# The Address Space Illusion
+
+Every process believes it has a private, contiguous expanse of memory starting from the same
+addresses — even though dozens of processes share one physical RAM. This is **virtual memory
+(VM)**, arguably the most important abstraction the OS provides. It delivers isolation, protection,
+and the ability to run programs larger than physical memory.
+
+## Why virtual memory exists
+
+Without VM, programs would use physical addresses directly, which is a disaster:
+
+- **No isolation** — any process could read/write any other's memory (and the kernel's).
+- **No relocation** — programs would have to be loaded at fixed, non-overlapping addresses.
+- **No overcommit** — you couldn't run a program needing more memory than physically present.
+
+VM solves all three by inserting a translation layer: programs use **virtual addresses**, and the
+hardware (with the OS) maps them to **physical addresses** on the fly.
+
+<KnowledgeCheck
+  id="as-why"
+  type="mcq"
+  prompt="Which problem does virtual memory primarily solve?"
+  options={[
+    "Making the CPU faster",
+    "Isolating processes and giving each a private address space (plus relocation and overcommit)",
+    "Reducing the number of instructions",
+    "Eliminating the need for a disk"
+  ]}
+  answer={1}
+  explanation="VM gives each process a private, protected address space, enables relocation, and allows using more memory than physically present."
+/>
+
+## Virtual vs. physical addresses
+
+- A **virtual address** is what your program uses — pointers, the addresses you print. Each
+  process has its own virtual address space (e.g., 0 up to 2^48 on x86-64).
+- A **physical address** is an actual location in RAM.
+- The **memory management unit (MMU)**, using page tables the OS sets up, translates virtual →
+  physical on every access.
+
+Two processes can both use virtual address `0x400000`, mapped to *different* physical locations —
+which is why they don't collide.
+
+<KnowledgeCheck
+  id="as-vp"
+  type="mcq"
+  prompt="Two processes both access virtual address 0x400000. Do they touch the same physical memory?"
+  options={[
+    "Yes, always",
+    "No — each process's virtual addresses map to its own physical pages",
+    "Only if they are the same program",
+    "Only on multi-core CPUs"
+  ]}
+  answer={1}
+  explanation="Per-process page tables map identical virtual addresses to different physical frames, providing isolation."
+/>
+
+## The layout of an address space
+
+A typical process virtual address space (high to low):
+
+```
+0x7fff...  +------------------+  high addresses
+           |      Stack       |  grows DOWN (locals, return addresses)
+           |        |         |
+           |        v         |
+           |                  |
+           |   (shared libs,  |
+           |    mmap region)  |
+           |        ^         |
+           |        |         |
+           |      Heap        |  grows UP (malloc)
+           +------------------+
+           |   .bss / .data   |  globals
+           |   .rodata        |  constants
+           |   .text          |  code
+0x400000   +------------------+  low addresses
+```
+
+The **stack** grows down from high addresses; the **heap** grows up; shared libraries and `mmap`
+regions sit in between. This is the picture behind the stack-vs-heap discussion from Module 0 and
+the buffer-overflow lesson.
+
+<KnowledgeCheck
+  id="as-layout"
+  type="mcq"
+  prompt="In a typical process address space, which direction do the stack and heap grow?"
+  options={[
+    "Both grow up",
+    "Stack grows down (from high addresses), heap grows up (from low)",
+    "Both grow down",
+    "Stack grows up, heap grows down"
+  ]}
+  answer={1}
+  explanation="The stack grows downward from high addresses while the heap grows upward; they expand toward each other."
+/>
+
+## Protection
+
+Each mapped region carries permissions — **read, write, execute** — enforced by the hardware on
+every access. Code (`.text`) is read+execute but not write; the stack/heap are read+write but not
+execute (NX). Violating these (writing to code, executing the stack) triggers a fault
+(`SIGSEGV`). This permission system is the foundation of memory safety defenses you saw earlier.
+
+<Aside kind="insight">
+The "segmentation fault" you've surely hit is the MMU detecting an access to an unmapped page or a
+permission violation, raising a fault the OS turns into SIGSEGV. VM isn't just performance — it's
+the hardware-enforced safety net.
+</Aside>
+
+<KnowledgeCheck
+  id="as-prot"
+  type="mcq"
+  prompt="Why does writing through a bad/NULL pointer cause a segmentation fault?"
+  options={[
+    "The compiler inserts a check",
+    "The MMU finds the virtual address unmapped or lacking write permission and raises a fault",
+    "The CPU runs out of registers",
+    "Malloc rejects it"
+  ]}
+  answer={1}
+  explanation="The hardware checks each access against the page tables; an unmapped or permission-violating access faults (SIGSEGV)."
+/>
+
+## Recap
+
+- Virtual memory gives each process a private, protected, contiguous-looking address space.
+- Programs use virtual addresses; the MMU translates them to physical via page tables.
+- Identical virtual addresses in different processes map to different physical memory (isolation).
+- Regions carry read/write/execute permissions enforced by hardware; violations fault.
+
+Next: **Pages, Page Tables, and the TLB** — the mechanism that makes translation work.

@@ -1,0 +1,146 @@
+# Arena and Pool Allocators
+
+General-purpose `malloc` handles arbitrary sizes and lifetimes, which costs speed and metadata.
+When you *know* your allocation pattern, **specialized allocators** are dramatically faster and
+simpler. Two workhorses: the **arena** (bump) allocator and the **pool** (slab) allocator. You'll
+implement both.
+
+## Arena (bump) allocator
+
+An arena allocates from a fixed buffer by simply **bumping a pointer** forward. There's no
+per-block metadata and no individual `free` — you reclaim everything at once by resetting the
+offset.
+
+```c
+typedef struct { char *base; size_t size; size_t used; } arena_t;
+
+void arena_init(arena_t *a, void *buf, size_t size) {
+  a->base = buf; a->size = size; a->used = 0;
+}
+void *arena_alloc(arena_t *a, size_t n) {
+  size_t off = (a->used + 7) & ~(size_t)7;   // align up to 8
+  if (off + n > a->size) return NULL;        // out of room
+  a->used = off + n;
+  return a->base + off;
+}
+void arena_reset(arena_t *a) { a->used = 0; } // free everything at once
+```
+
+**When it wins:** lots of allocations with a **shared lifetime** — e.g., all the nodes built while
+parsing one request, then thrown away together. Allocation is a few instructions; bulk free is
+instant; locality is excellent (contiguous). The cost: you can't free individual objects.
+
+<KnowledgeCheck
+  id="ap-arena"
+  type="mcq"
+  prompt="What is the defining characteristic of an arena (bump) allocator?"
+  options={[
+    "It frees each object individually with coalescing",
+    "It allocates by bumping a pointer and frees everything at once via reset (no per-object free)",
+    "It only allocates fixed-size blocks",
+    "It uses a balanced tree"
+  ]}
+  answer={1}
+  explanation="An arena bump-allocates from a buffer and reclaims all at once with a reset; individual frees aren't supported."
+/>
+
+<KnowledgeCheck
+  id="ap-arena-when"
+  type="mcq"
+  prompt="When is an arena allocator a great fit?"
+  options={[
+    "When objects have wildly different, independent lifetimes",
+    "When many allocations share one lifetime and can be freed together (e.g., per-request scratch)",
+    "When you need to free objects one at a time often",
+    "When memory is extremely scarce"
+  ]}
+  answer={1}
+  explanation="Arenas shine for batches of same-lifetime allocations freed all at once; they don't support frequent individual frees."
+/>
+
+## Pool (slab) allocator
+
+A pool allocates **fixed-size blocks** from a buffer and supports individual `free` in O(1) using a
+**free list** — the segregated-list idea distilled to one size class. The trick: store the
+free-list `next` pointer **inside each free block** (the block is unused while free, so its space
+is fair game).
+
+```c
+typedef struct { void *free_list; size_t block_size; /* ... */ } pool_t;
+
+void *pool_alloc(pool_t *p) {
+  if (!p->free_list) return NULL;          // exhausted
+  void *blk = p->free_list;                // take head of free list
+  p->free_list = *(void **)blk;            // next = first word of the block
+  return blk;
+}
+void pool_free(pool_t *p, void *blk) {
+  *(void **)blk = p->free_list;            // push block back onto free list
+  p->free_list = blk;
+}
+```
+
+Initialization threads every block into the free list. Both `alloc` and `free` are O(1) pointer
+operations — no searching, no coalescing, no fragmentation (all blocks are identical size). This is
+exactly how kernels allocate fixed objects (the Linux **slab** allocator) and how you'd back a
+fixed-size object cache.
+
+<KnowledgeCheck
+  id="ap-pool"
+  type="mcq"
+  prompt="How does a pool allocator achieve O(1) free?"
+  options={[
+    "It coalesces neighbors",
+    "It pushes the freed fixed-size block onto a free list whose 'next' pointer is stored inside the block itself",
+    "It searches for the smallest hole",
+    "It calls the OS each time"
+  ]}
+  answer={1}
+  explanation="Fixed-size blocks let free just push onto a singly-linked free list (next pointer stored in the free block) — constant time."
+/>
+
+<KnowledgeCheck
+  id="ap-pool-frag"
+  type="mcq"
+  prompt="Why does a pool allocator have no external fragmentation?"
+  options={[
+    "It never frees",
+    "All blocks are the same size, so any freed block fits any future request exactly",
+    "It uses the TLB",
+    "It compacts memory"
+  ]}
+  answer={1}
+  explanation="With uniform block sizes, every free block is interchangeable, so scattered frees can always satisfy new requests of that size."
+/>
+
+## Choosing an allocator
+
+- **General `malloc`** — arbitrary sizes/lifetimes; most flexible, most overhead.
+- **Arena** — many same-lifetime allocations, bulk free; blazing fast, no individual free.
+- **Pool/slab** — many same-size objects with individual lifetimes; O(1) alloc/free, no
+  fragmentation.
+
+A common high-performance pattern: use pools for hot fixed-size objects and arenas for transient
+scratch, falling back to `malloc` only for the irregular cases.
+
+<Aside kind="insight">
+"Know your allocation pattern" is the lesson. The fastest allocation is the one you don't make
+generic — specializing to your lifetime/size pattern turns malloc's searching and coalescing into a
+couple of pointer bumps.
+</Aside>
+
+## Recap
+
+- Arena: bump a pointer to allocate; reset to free everything; ideal for shared-lifetime batches.
+- Pool/slab: fixed-size blocks with an in-block free list; O(1) alloc/free and no external
+  fragmentation.
+- Specialized allocators trade generality for speed; combine them with `malloc` as needed.
+
+## Practice
+
+Two problems for this module: implement the **Arena Allocator** and the **Pool Allocator** — both
+graded under AddressSanitizer for out-of-bounds and overlap. These are frequent systems-interview
+asks ("write a memory pool").
+
+That completes Module M6 — you now understand memory from the page table down to the byte, and can
+build real allocators.

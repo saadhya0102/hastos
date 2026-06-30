@@ -484,6 +484,118 @@ int main(void) {
 #include "impl.c"
 `;
 
+const ARENA_HEADER = `#ifndef ARENA_H
+#define ARENA_H
+#include <stddef.h>
+typedef struct { char *base; size_t size; size_t used; } arena_t;
+void arena_init(arena_t *a, void *buf, size_t size);
+void *arena_alloc(arena_t *a, size_t n);
+void arena_reset(arena_t *a);
+#endif
+`;
+
+const ARENA_DRIVER = `#include "arena.h"
+#include <stdio.h>
+#include <stdint.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  _Alignas(16) static unsigned char buf[64];
+  arena_t a;
+
+  arena_init(&a, buf, 64);
+  { void *p = arena_alloc(&a, 8);
+    int ok = p && (unsigned char *)p >= buf && (unsigned char *)p + 8 <= buf + 64;
+    CHECK("basic_alloc", ok, "alloc 8 should return an in-range pointer"); }
+
+  arena_init(&a, buf, 64);
+  { void *p1 = arena_alloc(&a, 1); void *p2 = arena_alloc(&a, 8);
+    int ok = p1 && p2 && ((uintptr_t)p2 % 8 == 0) && ((unsigned char *)p2 >= (unsigned char *)p1 + 1);
+    CHECK("alignment", ok, "second alloc should be 8-aligned and not overlap the first"); }
+
+  arena_init(&a, buf, 64);
+  { void *p = arena_alloc(&a, 100);
+    CHECK("out_of_room", p == NULL, "an alloc larger than the buffer should return NULL"); }
+
+  arena_init(&a, buf, 64);
+  { int ok = 1; for (int i = 0; i < 8; i++) if (!arena_alloc(&a, 8)) ok = 0;
+    if (arena_alloc(&a, 8) != NULL) ok = 0;
+    CHECK("exhaust", ok, "eight 8-byte allocs fill 64 bytes; the ninth should be NULL"); }
+
+  arena_init(&a, buf, 64);
+  { for (int i = 0; i < 8; i++) arena_alloc(&a, 8); arena_reset(&a);
+    void *p = arena_alloc(&a, 8);
+    CHECK("reset_reuse", p == (void *)buf, "after reset, alloc should return the base again"); }
+
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const POOL_HEADER = `#ifndef POOL_H
+#define POOL_H
+#include <stddef.h>
+typedef struct { void *free_list; size_t block_size; } pool_t;
+void pool_init(pool_t *p, void *buf, size_t buf_size, size_t block_size);
+void *pool_alloc(pool_t *p);
+void pool_free(pool_t *p, void *blk);
+#endif
+`;
+
+const POOL_DRIVER = `#include "pool.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  _Alignas(16) static unsigned char buf[64];
+  pool_t p;
+
+  pool_init(&p, buf, 64, 16);
+  { void *b = pool_alloc(&p);
+    int ok = b && (unsigned char *)b >= buf && (unsigned char *)b + 16 <= buf + 64;
+    CHECK("alloc_one", ok, "alloc should return an in-range block"); }
+
+  pool_init(&p, buf, 64, 16);
+  { void *x = pool_alloc(&p); void *y = pool_alloc(&p);
+    CHECK("distinct_blocks", x && y && x != y, "two allocations should return distinct blocks"); }
+
+  pool_init(&p, buf, 64, 16);
+  { int ok = 1; for (int i = 0; i < 4; i++) if (!pool_alloc(&p)) ok = 0;
+    if (pool_alloc(&p) != NULL) ok = 0;
+    CHECK("exhaust", ok, "four 16-byte blocks then NULL"); }
+
+  pool_init(&p, buf, 64, 16);
+  { void *b[4]; for (int i = 0; i < 4; i++) b[i] = pool_alloc(&p);
+    pool_free(&p, b[1]); void *x = pool_alloc(&p);
+    CHECK("free_reuse", x == b[1], "the freed block should be returned by the next alloc"); }
+
+  pool_init(&p, buf, 64, 16);
+  { void *b[4]; for (int i = 0; i < 4; i++) b[i] = pool_alloc(&p);
+    for (int i = 0; i < 4; i++) pool_free(&p, b[i]);
+    int ok = 1; for (int i = 0; i < 4; i++) if (!pool_alloc(&p)) ok = 0;
+    CHECK("refill", ok, "after freeing all blocks, all can be allocated again"); }
+
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -742,6 +854,46 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       three: "hidden",
       ten: "hidden",
       thirtyone: "hidden",
+    },
+  },
+
+  "m6-p-arena": {
+    id: "m6-p-arena",
+    languageId: 50,
+    header: { name: "arena.h", content: ARENA_HEADER },
+    driver: ARENA_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "arena.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      basic_alloc: "sample",
+      alignment: "hidden",
+      out_of_room: "hidden",
+      exhaust: "hidden",
+      reset_reuse: "hidden",
+    },
+  },
+
+  "m6-p-pool": {
+    id: "m6-p-pool",
+    languageId: 50,
+    header: { name: "pool.h", content: POOL_HEADER },
+    driver: POOL_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "pool.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      alloc_one: "sample",
+      distinct_blocks: "hidden",
+      exhaust: "hidden",
+      free_reuse: "hidden",
+      refill: "hidden",
     },
   },
 };

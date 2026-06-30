@@ -1,0 +1,141 @@
+# Dynamic Allocation and Fragmentation
+
+The OS hands out memory in coarse pages, but programs need arbitrary-sized chunks on demand. A
+**dynamic memory allocator** (`malloc`/`free`) sits between them, carving pages into right-sized
+blocks and recycling freed ones. Understanding its job — and its enemy, fragmentation — sets up the
+allocators you'll implement.
+
+## What an allocator does
+
+An allocator manages a region of memory (the **heap**), satisfying requests:
+
+- `malloc(n)` — return a pointer to a block of at least `n` usable bytes, suitably aligned.
+- `free(p)` — return a previously-allocated block to the allocator for reuse.
+
+It gets raw memory from the OS (via `sbrk` or `mmap`) and subdivides it. The key challenge: do this
+**fast** while **wasting little space**, across arbitrary sequences of allocs and frees it can't
+predict.
+
+<KnowledgeCheck
+  id="ai-job"
+  type="mcq"
+  prompt="What is a heap allocator's core job?"
+  options={[
+    "Translate virtual addresses",
+    "Carve OS-provided memory into right-sized blocks for malloc and recycle freed blocks, fast and with little waste",
+    "Schedule processes",
+    "Cache disk pages"
+  ]}
+  answer={1}
+  explanation="The allocator subdivides raw memory into blocks for malloc and reclaims them on free, balancing speed and space efficiency."
+/>
+
+## The two requirements that constrain everything
+
+- **Alignment.** Returned pointers must be aligned for any type — **16 bytes** on 64-bit systems.
+  So even `malloc(1)` returns a 16-byte-aligned address, and block sizes are rounded up.
+- **Knowing the size on free.** `free(p)` is given only a pointer, no size. So the allocator must
+  store each block's size as **metadata**, typically in a **header** just before the returned
+  pointer. `free` reads `p[-header]` to learn the size.
+
+```
+[ header: size + flags ][  ...usable payload returned to user...  ]
+                         ^ malloc returns this address
+```
+
+<KnowledgeCheck
+  id="ai-free"
+  type="mcq"
+  prompt="free(p) receives only a pointer. How does the allocator know how big the block is?"
+  options={[
+    "It guesses",
+    "It stores each block's size in a header just before the payload and reads it back",
+    "The OS tells it",
+    "All blocks are the same size"
+  ]}
+  answer={1}
+  explanation="Allocators keep per-block metadata (a header with the size/flags) adjacent to the payload so free can recover the size."
+/>
+
+## Fragmentation: the allocator's enemy
+
+**Fragmentation** is memory that's wasted — unusable for requests even though it's free in total.
+Two kinds:
+
+- **Internal fragmentation** — wasted space *inside* an allocated block: from alignment rounding,
+  header overhead, or a minimum block size. `malloc(1)` consuming 16+ bytes is internal frag.
+- **External fragmentation** — free memory exists but is **scattered** in pieces too small to
+  satisfy a request. You might have 1 MB free total but no single 100 KB hole.
+
+```
+External fragmentation:
+[used][ free 40 ][used][ free 30 ][used][ free 20 ]   -> can't satisfy malloc(80) despite 90 free
+```
+
+A good allocator minimizes both — often a trade-off.
+
+<KnowledgeCheck
+  id="ai-frag"
+  type="mcq"
+  prompt="You have 90 bytes free total, split into 40/30/20 holes, and malloc(80) fails. What is this?"
+  options={[
+    "Internal fragmentation",
+    "External fragmentation (free memory is scattered into too-small pieces)",
+    "A memory leak",
+    "Thrashing"
+  ]}
+  answer={1}
+  explanation="Enough free memory exists in aggregate, but no single contiguous hole fits the request — external fragmentation."
+/>
+
+<KnowledgeCheck
+  id="ai-internal"
+  type="mcq"
+  prompt="malloc(1) returns a block that occupies 16+ bytes due to alignment and headers. The wasted space is:"
+  options={[
+    "External fragmentation",
+    "Internal fragmentation",
+    "A leak",
+    "Not fragmentation at all"
+  ]}
+  answer={1}
+  explanation="Waste inside an allocated block (alignment rounding, headers, minimum size) is internal fragmentation."
+/>
+
+## Placement policies
+
+When a request arrives, which free block do you use?
+
+- **First-fit** — scan from the start, take the first block big enough. Fast; tends to leave small
+  fragments near the front.
+- **Next-fit** — like first-fit but resume scanning from where you left off. Faster scans;
+  sometimes worse fragmentation.
+- **Best-fit** — pick the *smallest* block that fits. Less wasted space per allocation, but slower
+  (must scan more) and can create tiny leftover slivers.
+
+Real allocators combine ideas (segregated free lists by size class) to get best-fit-like quality at
+first-fit-like speed — the subject of the next lessons.
+
+<KnowledgeCheck
+  id="ai-fit"
+  type="mcq"
+  prompt="What does the best-fit placement policy do?"
+  options={[
+    "Takes the first block large enough",
+    "Chooses the smallest free block that satisfies the request",
+    "Always allocates a new page",
+    "Picks a random block"
+  ]}
+  answer={1}
+  explanation="Best-fit selects the smallest sufficient block to reduce wasted space, at the cost of scanning more candidates."
+/>
+
+## Recap
+
+- An allocator subdivides OS memory into aligned blocks for `malloc` and recycles them on `free`.
+- Pointers must be 16-byte aligned; `free` recovers size from a per-block **header**.
+- Internal fragmentation = waste inside blocks; external = scattered free space too small to use.
+- Placement policies (first-/next-/best-fit) trade speed for space; real allocators use segregated
+  lists.
+
+Next: **Implementing malloc: Free Lists and Coalescing** — the data structures that make it work.

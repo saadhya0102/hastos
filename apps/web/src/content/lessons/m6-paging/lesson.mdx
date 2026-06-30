@@ -1,0 +1,142 @@
+# Pages, Page Tables, and the TLB
+
+Virtual memory is implemented at the granularity of fixed-size blocks called **pages**. The OS and
+hardware maintain **page tables** that map virtual pages to physical frames, and a cache called the
+**TLB** keeps translation fast. This is the machinery behind every memory access your program makes.
+
+## Pages and frames
+
+Memory is divided into fixed-size **pages** (virtual) and **frames** (physical), typically **4 KiB**
+each. A virtual address splits into two parts:
+
+```
+| virtual page number (VPN) | page offset |
+```
+
+For 4 KiB pages, the **offset is the low 12 bits** (2^12 = 4096); the rest is the page number.
+Translation maps the VPN → a physical frame number (PFN); the offset is unchanged (it's the same
+byte within the page).
+
+```
+physical address = (frame for VPN) * page_size + offset
+```
+
+<KnowledgeCheck
+  id="pg-offset"
+  type="numeric"
+  prompt="For 4 KiB pages, how many bits of a virtual address are the page offset?"
+  answer={12}
+  explanation="2^12 = 4096 = 4 KiB, so the low 12 bits are the offset within a page."
+/>
+
+## Page tables
+
+A **page table** maps each VPN to a PFN plus flags (valid/present, read/write/execute, dirty,
+accessed). The MMU consults it on every access. Each entry (PTE) says either "this page is in
+frame X" or "not present" (triggering a page fault).
+
+A single flat table for a 48-bit address space would be enormous, so x86-64 uses a **multi-level
+(4-level)** page table — a tree. The virtual address is sliced into several index fields, one per
+level, plus the offset:
+
+```
+| L4 idx | L3 idx | L2 idx | L1 idx | offset |
+```
+
+Walking the tree (one memory access per level) yields the frame. Multi-level tables are sparse:
+unused regions need no lower-level tables, saving huge amounts of space.
+
+<KnowledgeCheck
+  id="pg-multilevel"
+  type="mcq"
+  prompt="Why does x86-64 use a multi-level page table instead of one flat table?"
+  options={[
+    "It is faster to walk",
+    "A flat table for a huge address space would be enormous; multi-level tables are sparse and only allocate what's used",
+    "Hardware can't do flat tables",
+    "To support more registers"
+  ]}
+  answer={1}
+  explanation="A flat table covering 2^48 addresses would be impractically large; the multi-level tree allocates sub-tables only for used regions."
+/>
+
+## A worked translation
+
+Suppose 4 KiB pages and a (simplified) single-level table. Virtual address `0x5004`:
+
+- offset = low 12 bits = `0x004` = 4
+- VPN = `0x5004 >> 12` = `0x5` = 5
+
+If the page table says VPN 5 → frame 9, then:
+
+- physical = `9 * 4096 + 4` = `36868` = `0x9004`.
+
+The high bits got remapped (5 → 9); the offset stayed (4).
+
+<KnowledgeCheck
+  id="pg-translate"
+  type="numeric"
+  prompt="4 KiB pages; VPN 2 maps to frame 7. What physical address does virtual address 0x2010 translate to (in decimal)? (0x2010 = VPN 2, offset 0x010=16)"
+  answer={28688}
+  explanation="frame 7 * 4096 + offset 16 = 28672 + 16 = 28688 (0x7010)."
+/>
+
+## The TLB
+
+Walking a 4-level page table means up to **4 extra memory accesses per memory access** — far too
+slow. The **Translation Lookaside Buffer (TLB)** is a small, fast cache of recent VPN→PFN
+translations inside the MMU. On a **TLB hit**, translation is nearly free; on a **miss**, the
+hardware walks the page table (slow) and caches the result.
+
+This is why **locality matters for translation too**: touching many pages with poor locality
+causes TLB misses, and huge working sets can thrash the TLB. (Huge pages — 2 MiB / 1 GiB — reduce
+TLB pressure by covering more memory per entry.)
+
+<KnowledgeCheck
+  id="pg-tlb"
+  type="mcq"
+  prompt="What does the TLB cache, and why?"
+  options={[
+    "File contents, for faster I/O",
+    "Recent virtual-to-physical translations, to avoid slow page-table walks",
+    "Instructions, for faster decode",
+    "Free memory blocks"
+  ]}
+  answer={1}
+  explanation="The TLB caches VPN->PFN translations so most accesses skip the multi-level page-table walk."
+/>
+
+## Page faults and demand paging
+
+If a PTE is marked **not present**, the access triggers a **page fault** — a trap into the OS. The
+OS decides:
+
+- The page is valid but not yet loaded (e.g., from the executable or swapped out) → load it into a
+  free frame, update the PTE, and **retry** the instruction. This is **demand paging**: pages are
+  brought in only when actually touched.
+- The access is illegal (unmapped/permission) → deliver `SIGSEGV`.
+
+Demand paging is why a large program starts quickly: only the pages it actually uses get loaded.
+
+<KnowledgeCheck
+  id="pg-fault"
+  type="mcq"
+  prompt="A valid page that hasn't been loaded yet is accessed. What happens?"
+  options={[
+    "The program crashes",
+    "A page fault traps to the OS, which loads the page and retries the instruction (demand paging)",
+    "The CPU skips the access",
+    "The page table is deleted"
+  ]}
+  answer={1}
+  explanation="A not-present-but-valid page faults; the OS loads it, fixes the PTE, and re-executes the faulting instruction."
+/>
+
+## Recap
+
+- Memory is paged (typically 4 KiB); a virtual address = VPN + 12-bit offset.
+- Page tables (multi-level on x86-64) map VPN→frame with permission flags; they're sparse.
+- The TLB caches translations so most accesses avoid the slow page-table walk; locality helps it.
+- Not-present pages fault; the OS demand-pages them in and retries, or raises SIGSEGV.
+
+Next: **Demand Paging, mmap, and Copy-on-Write** — the OS tricks built on faults.

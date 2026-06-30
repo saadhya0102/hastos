@@ -1,0 +1,115 @@
+# Demand Paging, mmap, and Copy-on-Write
+
+Once the OS can trap on any memory access via page faults, it gains a toolkit of powerful tricks:
+mapping files into memory, sharing pages until someone writes, and using disk as an overflow for
+RAM. These aren't exotic — they run under every program you use.
+
+## Memory-mapped files (mmap)
+
+`mmap` maps a file (or anonymous memory) directly into your address space, so you access file
+contents through **pointers** instead of `read`/`write`:
+
+```c
+int fd = open("data.bin", O_RDONLY);
+size_t len = file_size(fd);
+char *p = mmap(NULL, len, PROT_READ, MAP_PRIVATE, fd, 0);
+char first = p[0];           // reading the pointer reads the file (page-faulted in on demand)
+```
+
+The pages aren't loaded up front — touching `p[i]` triggers a fault that loads that page from the
+file (demand paging). Benefits: no explicit read loop, the OS caches pages, and multiple processes
+mapping the same file can share the physical pages. `mmap` is also how `malloc` gets large blocks
+and how shared libraries are loaded.
+
+<KnowledgeCheck
+  id="mm-mmap"
+  type="mcq"
+  prompt="What does mmap let you do?"
+  options={[
+    "Allocate registers",
+    "Map a file (or anonymous memory) into the address space so you access it via pointers, paged in on demand",
+    "Disable the TLB",
+    "Run code faster"
+  ]}
+  answer={1}
+  explanation="mmap maps file/anonymous memory into your virtual address space; accesses fault pages in on demand and can be shared across processes."
+/>
+
+## Copy-on-write (COW)
+
+Recall `fork` gives the child a copy of the parent's memory. Copying gigabytes eagerly would be
+absurd — especially since the child often immediately `exec`s a new program. **Copy-on-write**
+makes the copy lazy:
+
+1. On `fork`, parent and child **share** the same physical pages, all marked **read-only** in both
+   page tables.
+2. Reads are fine — both see the same data.
+3. When either side **writes**, the hardware faults (the page is read-only). The OS makes a private
+   **copy** of just that page, marks it writable for the writer, and retries.
+
+So only pages that are actually modified get duplicated. `fork` becomes near-instant, and
+`fork`+`exec` barely copies anything.
+
+<KnowledgeCheck
+  id="mm-cow"
+  type="mcq"
+  prompt="Under copy-on-write fork, when is a page actually duplicated?"
+  options={[
+    "Immediately at fork for every page",
+    "Only when one of the processes writes to that page (a protection fault triggers the copy)",
+    "Never",
+    "When the child exits"
+  ]}
+  answer={1}
+  explanation="Pages are shared read-only after fork; the first write faults and copies just that page — copy-on-write."
+/>
+
+## Swapping and thrashing
+
+Physical RAM is finite, so the OS can **evict** pages to disk (**swap**) and reload them on demand
+— effectively using disk as slow extra memory. A page-replacement policy (like CLOCK, covered
+later) chooses victims.
+
+The danger is **thrashing**: when the active working set exceeds RAM, the system spends most of its
+time paging in/out instead of doing work, and performance collapses. The fix is more RAM or a
+smaller working set — not faster paging.
+
+<KnowledgeCheck
+  id="mm-thrash"
+  type="mcq"
+  prompt="What is thrashing?"
+  options={[
+    "A CPU running too hot",
+    "When the working set exceeds RAM, so the system spends most time swapping pages instead of computing",
+    "A fast page fault",
+    "A type of cache hit"
+  ]}
+  answer={1}
+  explanation="Thrashing is pathological paging: the working set doesn't fit in RAM, so the system churns on swap and throughput collapses."
+/>
+
+## It all rests on the page fault
+
+Notice the unifying theme: **mmap** (fault loads the file page), **demand paging** (fault loads the
+needed page), **COW** (write-fault triggers the copy), and **swap** (fault reloads from disk) are
+all built on the humble page fault from the last lesson. Trapping on access is the lever the OS
+uses to virtualize memory cleverly.
+
+<Aside kind="insight">
+This is a recurring systems pattern: make the common case fast (shared/lazy/cached) and use a
+**fault/trap** to handle the rare case correctly. The page fault is the canonical example —
+"optimistically share, fix up on write."
+</Aside>
+
+## Recap
+
+- `mmap` maps files/anonymous memory into the address space; pages load on demand and can be
+  shared.
+- Copy-on-write shares pages read-only after `fork` and duplicates only on a write fault — making
+  `fork` cheap.
+- Swapping uses disk as overflow RAM; thrashing is when the working set exceeds RAM and paging
+  dominates.
+- mmap, demand paging, COW, and swap are all built on the page-fault mechanism.
+
+Next: **Dynamic Allocation and Fragmentation** — moving from OS paging to the heap allocator you'll
+build.

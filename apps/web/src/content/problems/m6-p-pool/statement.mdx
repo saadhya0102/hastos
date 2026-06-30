@@ -1,0 +1,29 @@
+Implement a **pool (slab) allocator**: fixed-size blocks carved from one buffer, with **O(1)**
+allocate and free via a free list threaded *through the free blocks themselves*. "Write a memory
+pool" is a classic systems-interview problem and the core idea behind kernel slab allocators.
+
+## Your task
+
+In `pool.c`, implement the functions in `pool.h`:
+
+```c
+void  pool_init(pool_t *p, void *buf, size_t buf_size, size_t block_size);
+void *pool_alloc(pool_t *p);          // a free block, or NULL if exhausted
+void  pool_free(pool_t *p, void *blk); // return a block
+```
+
+- `pool_init` splits `buf` into `buf_size / block_size` blocks and threads them all onto a
+  singly-linked free list. Store each block's "next" pointer **in the first bytes of the block**:
+  `*(void **)block = next`.
+- `pool_alloc` pops the head of the free list (its next pointer is `*(void**)head`), or returns
+  `NULL` when empty.
+- `pool_free` pushes a block back onto the free list.
+
+## Hints (no spoilers)
+
+- A free block is unused, so you can store the `next` pointer inside it — that's the whole trick.
+- `block_size >= sizeof(void*)` and the buffer is aligned, so storing a pointer at the block start
+  is safe.
+- Both alloc and free should be a couple of pointer assignments — no loops, no searching.
+
+Graded under AddressSanitizer (catches overlaps/out-of-bounds). Use **Run**, then **Submit**.

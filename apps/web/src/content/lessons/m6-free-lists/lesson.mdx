@@ -1,0 +1,147 @@
+# Implementing malloc: Free Lists and Coalescing
+
+Now we build the allocator's internals. The heart of `malloc`/`free` is a **free list** — a way to
+track which blocks are available — plus the discipline to **split** blocks when allocating and
+**coalesce** adjacent free blocks to fight fragmentation. These are exactly the techniques behind
+the CS:APP malloc lab and the pool allocator you'll implement.
+
+## Implicit free list with boundary tags
+
+The simplest design treats the heap as one contiguous sequence of blocks, each with a **header**
+storing its size and an allocated/free bit. Since sizes are multiples of 8 or 16, the low bits of
+the size are free to use as flags:
+
+```
+header (size | alloc-bit)  [ payload ]  footer (size | alloc-bit)
+```
+
+The **footer** (a copy of the header at the block's end) is the **boundary tag** — it lets you
+look at the *previous* block by reading the footer just before your header. With headers you can
+walk forward (next block = current + size); with footers you can walk backward. This bidirectional
+navigation is what makes coalescing possible.
+
+It's called **implicit** because free blocks aren't on a separate list — you find them by walking
+*all* blocks and checking the alloc bit.
+
+<KnowledgeCheck
+  id="fl-boundary"
+  type="mcq"
+  prompt="What is the purpose of the footer (boundary tag) at the end of each block?"
+  options={[
+    "To store the payload",
+    "To let you find and inspect the PREVIOUS block (enabling backward coalescing)",
+    "To align the block",
+    "To mark end of heap"
+  ]}
+  answer={1}
+  explanation="A footer replicates the header so the next block can read backward to find the previous block's size/status — essential for coalescing."
+/>
+
+## Allocation: search, then split
+
+To `malloc(n)`:
+
+1. Round `n` up to include the header/footer and satisfy alignment.
+2. **Search** the implicit list (first-fit/best-fit) for a free block big enough.
+3. If the chosen block is much larger than needed, **split** it: carve off the requested amount and
+   leave the remainder as a smaller free block (reducing internal fragmentation).
+4. Mark the allocated portion's header/footer as allocated; return the payload pointer.
+
+If no block fits, **extend the heap** (`sbrk`/`mmap`) and place the block there.
+
+<KnowledgeCheck
+  id="fl-split"
+  type="mcq"
+  prompt="Why split a free block that is larger than the request?"
+  options={[
+    "To make malloc slower",
+    "To return only what's needed and leave the remainder free, reducing internal fragmentation",
+    "Splitting is required by the OS",
+    "To merge blocks"
+  ]}
+  answer={1}
+  explanation="Splitting hands back just the requested size and keeps the leftover as a usable free block, cutting internal fragmentation."
+/>
+
+## Freeing: coalesce adjacent free blocks
+
+To `free(p)`:
+
+1. Read the header before `p` to find the size; mark the block free.
+2. **Coalesce** — if the next and/or previous block is also free, merge them into one larger free
+   block. This is the cure for external fragmentation: without it, the heap fills with small
+   unmergeable holes.
+
+Boundary tags make coalescing O(1): check the next block's header (forward) and the previous
+block's footer (backward), and combine sizes.
+
+```
+free [A] | free [B]   ->   free [A+B]      (coalesce when neighbors are free)
+```
+
+<KnowledgeCheck
+  id="fl-coalesce"
+  type="mcq"
+  prompt="What problem does coalescing on free address?"
+  options={[
+    "Internal fragmentation",
+    "External fragmentation — it merges adjacent free blocks so large requests can be satisfied",
+    "Alignment",
+    "TLB misses"
+  ]}
+  answer={1}
+  explanation="Merging neighboring free blocks rebuilds large contiguous holes, combating external fragmentation."
+/>
+
+## Explicit free lists: track only free blocks
+
+Walking *all* blocks (implicit) is slow when most are allocated. An **explicit free list** stores
+next/previous pointers **inside the free blocks' payloads** (free space is unused anyway), forming
+a linked list of only the free blocks. Now allocation scans just free blocks — far faster.
+
+```
+free block: [ header ][ next* ][ prev* ][ ... unused ... ][ footer ]
+```
+
+On free, insert the block into the list (and coalesce); on allocate, unlink it.
+
+<KnowledgeCheck
+  id="fl-explicit"
+  type="mcq"
+  prompt="How does an explicit free list speed up allocation vs. an implicit list?"
+  options={[
+    "It uses less memory",
+    "It links only free blocks together (pointers stored in their unused payloads), so search skips allocated blocks",
+    "It avoids headers",
+    "It never coalesces"
+  ]}
+  answer={1}
+  explanation="By threading a linked list through free blocks, the allocator searches only free blocks instead of walking everything."
+/>
+
+## Segregated free lists: speed at scale
+
+Real allocators keep **multiple free lists, one per size class** (e.g., 16–32, 33–64, ...). To
+allocate, jump straight to the list for the requested size class and grab a block — approximating
+best-fit quality at near-constant time. This is how production allocators (and the **pool
+allocator** you'll build) achieve speed: one list per fixed size means O(1) alloc/free.
+
+<Aside kind="insight">
+The progression — implicit → explicit → segregated — is a microcosm of systems design: start
+correct and simple, then add structure (separate the free set; bucket by size) to make the common
+operation fast. Each step trades a little metadata for a lot of speed.
+</Aside>
+
+## Recap
+
+- Implicit free lists use header+footer **boundary tags** to walk blocks both directions.
+- Allocation **searches then splits**; freeing marks free and **coalesces** adjacent free blocks.
+- Explicit free lists thread pointers through free blocks so search skips allocated ones.
+- Segregated lists (one per size class) give fast, best-fit-like allocation — the basis of pools.
+
+## Practice
+
+Build the free-list idea concretely in the **Pool Allocator** problem (next lesson links it): a
+fixed-block allocator with an O(1) free list — the essence of `malloc` distilled.
+
+Next: **Arena and Pool Allocators** — specialized allocators that win when you know your pattern.

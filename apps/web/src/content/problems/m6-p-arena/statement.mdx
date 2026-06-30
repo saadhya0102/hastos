@@ -1,0 +1,26 @@
+Implement an **arena (bump) allocator** over a caller-provided buffer. Arenas are a staple
+high-performance technique and a common systems-interview ask: allocation is a pointer bump, and
+you free everything at once.
+
+## Your task
+
+In `arena.c`, implement the three functions declared in `arena.h`:
+
+```c
+void  arena_init(arena_t *a, void *buf, size_t size);
+void *arena_alloc(arena_t *a, size_t n);   // 8-byte aligned; NULL if it doesn't fit
+void  arena_reset(arena_t *a);
+```
+
+- `arena_init` records the buffer and sets `used = 0`.
+- `arena_alloc` aligns the current offset up to a multiple of 8, and if `aligned_offset + n`
+  exceeds `size`, returns `NULL`; otherwise advances `used` and returns `base + aligned_offset`.
+- `arena_reset` sets `used` back to 0 (reclaiming everything).
+
+## Hints (no spoilers)
+
+- Align up to 8 with `(used + 7) & ~(size_t)7`.
+- Check the bound *after* aligning. Return `NULL` rather than overflowing the buffer (ASan will
+  catch overflows).
+
+Use **Run** to experiment and **Submit** to grade.
