@@ -1,0 +1,63 @@
+# Judge0 for Oracle Cloud "Always Free" ARM (Ampere A1 / aarch64).
+#
+# IMPORTANT: Official Judge0 images are x86_64 only and fail on ARM with
+# "exec format error". This compose uses the community aarch64 build by `mechaadi`,
+# which supports the languages HastOS currently grades (C, C++, Rust, Go, Python).
+# It does NOT include nasm/assembly, D, Swift, VB, Clojure, Prolog — so the future
+# x86-64 assembly problems (Module M2) won't run on this image. For those, build
+# Judge0 for arm64 from source, or run the official x86 image on an x86 host.
+#
+# Prereqs on the host (see ../oracle/setup.sh): Docker + compose, cgroup v1 enabled,
+# and inbound port 2358 allowed (OCI security list + host firewall).
+#
+# Usage:
+#   cp ../oracle/judge0.conf.example judge0.conf   # set passwords + AUTHN_TOKEN
+#   docker compose -f docker-compose.arm64.yml up -d
+#   curl localhost:2358/languages                  # verify; reconcile IDs if needed
+
+services:
+  server:
+    image: mechaadi/judge0:1.0.0-aarch64
+    platform: linux/arm64
+    command: ["./scripts/server"]
+    env_file: judge0.conf
+    ports:
+      - "2358:2358"
+    depends_on:
+      - db
+      - redis
+    restart: always
+
+  workers:
+    image: mechaadi/judge0:1.0.0-aarch64
+    platform: linux/arm64
+    command: ["./scripts/workers"]
+    env_file: judge0.conf
+    privileged: true
+    depends_on:
+      - db
+      - redis
+    restart: always
+
+  db:
+    image: postgres:13
+    platform: linux/arm64
+    env_file: judge0.conf
+    volumes:
+      - judge0-db:/var/lib/postgresql/data
+    restart: always
+
+  redis:
+    image: redis:6
+    platform: linux/arm64
+    command:
+      [
+        "bash",
+        "-c",
+        'docker-entrypoint.sh --appendonly no --requirepass "$$REDIS_PASSWORD"',
+      ]
+    env_file: judge0.conf
+    restart: always
+
+volumes:
+  judge0-db:

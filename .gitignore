@@ -30,5 +30,8 @@ ui-debug.log
 # Cloudflare
 .wrangler/
 
+# Judge0 runtime config (contains secrets)
+judge0.conf
+
 # Misc
 agent-tools/

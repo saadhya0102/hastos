@@ -13,12 +13,10 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 ALLOWED_ORIGIN = "http://localhost:5173,https://hastos.web.app,https://hastos.firebaseapp.com"
 
-# Rate-limit + cache KV. Create with:
-#   wrangler kv namespace create RATELIMIT
-# then paste the id below and remove the comment.
-# [[kv_namespaces]]
-# binding = "RATELIMIT"
-# id = "REPLACE_WITH_KV_NAMESPACE_ID"
+# Rate-limit + cache KV (per-user sliding-window counters; see src/lib/ratelimit.ts).
+[[kv_namespaces]]
+binding = "RATELIMIT"
+id = "5921c7a6b09e4fe988b706899d52e733"
 
 # Secrets (do NOT put values here):
 #   wrangler secret put OPENAI_API_KEY
