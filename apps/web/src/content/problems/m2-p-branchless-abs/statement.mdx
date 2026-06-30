@@ -1,0 +1,23 @@
+Implement absolute value **without any branches** — no `if`, no `?:`, no loops. This is a
+classic machine-level exercise: it mirrors what the CPU does with a conditional move (`cmov`)
+or pure arithmetic, avoiding a branch that could be mispredicted.
+
+## Your task
+
+In `babs.c`, implement:
+
+```c
+int my_abs(int x);
+```
+
+Return `|x|`. You may assume `x != INT_MIN` (whose absolute value doesn't fit in an `int`).
+**Do not use branches.**
+
+## Hints (no spoilers)
+
+- For a 32-bit `int`, `x >> 31` is an arithmetic shift: it yields `0` for non-negative `x` and
+  `-1` (all ones) for negative `x`. Call that `mask`.
+- Recall from Module 1 that negation is `~v + 1`. Combine `x`, `mask` with XOR and a subtraction
+  so that positives pass through and negatives get negated — with no conditional.
+
+Graded with UBSan, so keep arithmetic well-defined. Use **Run** to experiment, **Submit** to grade.

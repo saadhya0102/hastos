@@ -1,0 +1,146 @@
+# Data Movement and Arithmetic
+
+With registers and operands understood, we can follow how data moves and computes. Two
+instructions dominate real code — `mov` and `lea` — and confusing them is one of the most
+common beginner mistakes when reading assembly.
+
+## mov: the workhorse
+
+`mov dst, src` copies a value. The source and destination can be register, memory, or
+(for the source) an immediate — but **not both memory** (x86 forbids memory-to-memory `mov`).
+
+```
+mov eax, 5         ; eax = 5            (immediate -> register)
+mov eax, ebx       ; eax = ebx          (register -> register)
+mov eax, [rdi]     ; eax = *rdi         (memory -> register, a load)
+mov [rdi], eax     ; *rdi = eax         (register -> memory, a store)
+```
+
+### Sign vs. zero extension
+When moving a smaller value into a larger register, the upper bits must be filled:
+
+- `movzx` (zero-extend) — fill with zeros; used for **unsigned** widening.
+- `movsx` (sign-extend) — copy the sign bit; used for **signed** widening.
+
+```
+movzx eax, byte [rdi]   ; load 1 byte, zero-extend to 32 bits (unsigned char)
+movsx eax, byte [rdi]   ; load 1 byte, sign-extend  (signed char)
+```
+
+This is the machine-level reflection of the signed/unsigned widening rules from Module 1.
+
+<KnowledgeCheck
+  id="da-ext"
+  type="mcq"
+  prompt="To load a signed char into a 32-bit register preserving its negative value, which instruction is used?"
+  options={["mov", "movzx", "movsx", "lea"]}
+  answer={2}
+  explanation="movsx sign-extends, preserving negative values; movzx would zero-extend (for unsigned)."
+/>
+
+## lea: address arithmetic without memory access
+
+`lea dst, [expr]` ("load effective address") computes the *address* `expr` and stores it in
+`dst` — but, crucially, it does **not** access memory. Compare:
+
+```
+mov rax, [rdi + rsi*4]   ; rax = *(rdi + rsi*4)   -- a LOAD from memory
+lea rax, [rdi + rsi*4]   ; rax =  (rdi + rsi*4)   -- just the ARITHMETIC
+```
+
+Because the addressing form computes `base + index*scale + disp`, compilers love `lea` as a
+fast way to do **multiply-and-add** that doesn't touch memory or the flags:
+
+```
+; compute  x*5  (x in rdi) without a multiply instruction:
+lea rax, [rdi + rdi*4]   ; rax = rdi + rdi*4 = 5*rdi
+```
+
+<Aside kind="pitfall">
+Seeing `lea` and assuming a memory access is a classic misread. `lea` never dereferences — the
+brackets here mean "the address that *would* be formed," not "the value there."
+</Aside>
+
+<KnowledgeCheck
+  id="da-lea"
+  type="mcq"
+  prompt="What does `lea rax, [rdi + rdi*2]` compute, given rdi = x?"
+  options={["2x", "3x", "x*x", "*(x + x*2)"]}
+  answer={1}
+  explanation="rdi + rdi*2 = 3*rdi = 3x. lea does the arithmetic without accessing memory."
+/>
+
+## Arithmetic and logical instructions
+
+These map closely to C operators:
+
+- `add dst, src` → `dst += src`; `sub dst, src` → `dst -= src`.
+- `imul dst, src` → signed multiply; `neg dst` → `dst = -dst`.
+- `and`, `or`, `xor`, `not` → the bitwise operators.
+- `sal`/`shl` (left shift), `sar` (arithmetic right), `shr` (logical right).
+- `inc`, `dec` → ±1.
+
+```c
+int f(int x, int y) { return (x + y) * 2; }
+```
+```
+f:
+    lea eax, [rdi + rsi]    ; eax = x + y
+    add eax, eax            ; eax = (x+y) + (x+y) = 2*(x+y)
+    ret
+```
+
+Notice the compiler used `lea` for the add and a self-add (`add eax, eax`) instead of a
+multiply — both faster than `imul`. Reading optimized code is largely recognizing these tricks.
+
+<KnowledgeCheck
+  id="da-double"
+  type="mcq"
+  prompt="Why might a compiler emit `add eax, eax` instead of `imul eax, 2`?"
+  options={[
+    "They do different things",
+    "add is typically faster/cheaper than a general multiply for doubling",
+    "imul is not a real instruction",
+    "eax cannot be multiplied"
+  ]}
+  answer={1}
+  explanation="Doubling via add (or a shift) is cheaper than a general integer multiply; compilers prefer it."
+/>
+
+## A worked read
+
+```c
+long scale_add(long *a, long i, long k) { return a[i] + k; }
+```
+```
+scale_add:
+    mov rax, [rdi + rsi*8]   ; rax = a[i]   (longs are 8 bytes -> scale 8)
+    add rax, rdx             ; rax = a[i] + k   (k arrived in rdx)
+    ret
+```
+
+Arguments: `a`→rdi, `i`→rsi, `k`→rdx; result in rax. The scale is 8 because `long` is 8 bytes.
+
+<KnowledgeCheck
+  id="da-scale"
+  type="mcq"
+  prompt="Why is the scale 8 in `[rdi + rsi*8]` for a `long` array?"
+  options={[
+    "Arrays always use scale 8",
+    "long is 8 bytes, so element i is at offset i*8",
+    "rsi is always multiplied by 8",
+    "It is a typo for 4"
+  ]}
+  answer={1}
+  explanation="Scale equals the element size; a long is 8 bytes, so a[i] is at base + i*8."
+/>
+
+## Recap
+
+- `mov` copies values (no memory-to-memory); `movzx`/`movsx` widen unsigned/signed.
+- `lea` computes an address (base+index*scale+disp) **without** touching memory — a fast
+  multiply-add the compiler exploits.
+- Arithmetic/logical instructions mirror C operators; compilers prefer `lea`/shifts/adds over
+  `imul` when they can.
+
+Next: **Control Flow and Condition Codes** — how `if`, loops, and `cmov` are built.

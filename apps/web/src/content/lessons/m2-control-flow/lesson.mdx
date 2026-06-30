@@ -1,0 +1,162 @@
+# Control Flow and Condition Codes
+
+High-level `if`, `while`, `for`, and `switch` all compile down to two primitives: **setting
+condition flags** and **jumping** based on them. Understanding this layer demystifies branching,
+explains signed-vs-unsigned comparison bugs at the machine level, and reveals branchless tricks.
+
+## Condition flags
+
+The CPU keeps a set of single-bit **condition codes** (flags) describing the result of the most
+recent arithmetic/logical operation. The important ones:
+
+- **ZF** (zero) — the result was zero.
+- **SF** (sign) — the result's most significant bit was 1 (negative, for signed).
+- **CF** (carry) — an unsigned carry/borrow occurred (unsigned overflow).
+- **OF** (overflow) — a signed overflow occurred.
+
+Most arithmetic instructions set these as a side effect. Two instructions exist purely to set
+flags without storing a result:
+
+- `cmp a, b` — computes `a - b`, sets flags, discards the result. (Used before conditional jumps.)
+- `test a, b` — computes `a & b`, sets flags, discards the result. (`test rax, rax` is the
+  idiomatic "is rax zero?" check.)
+
+<KnowledgeCheck
+  id="cf-test"
+  type="mcq"
+  prompt="What is the idiomatic meaning of `test rax, rax` followed by `je`?"
+  options={[
+    "Jump if rax is negative",
+    "Jump if rax is zero",
+    "Jump always",
+    "Multiply rax by itself"
+  ]}
+  answer={1}
+  explanation="test rax,rax sets ZF when rax is 0; je (jump if equal/zero) then branches when rax == 0."
+/>
+
+## Jumps
+
+- `jmp target` — unconditional jump.
+- Conditional jumps read the flags. Crucially, there are **separate signed and unsigned**
+  families:
+
+Signed comparisons (use SF/OF):
+- `je`/`jz` (equal/zero), `jne`/`jnz` (not equal)
+- `jl` (less), `jle` (less-or-equal), `jg` (greater), `jge` (greater-or-equal)
+
+Unsigned comparisons (use CF):
+- `jb` (below), `jbe` (below-or-equal), `ja` (above), `jae` (above-or-equal)
+
+<Aside kind="insight">
+The signed/unsigned split here is the machine-level root of the comparison pitfall from Module
+1. The *same* `cmp` sets the flags; the compiler chooses `jl` (signed) or `jb` (unsigned) based
+on the operand types. Pick the wrong type in C and you get the wrong jump.
+</Aside>
+
+<KnowledgeCheck
+  id="cf-signed"
+  type="mcq"
+  prompt="Which jump implements a SIGNED 'less than' comparison?"
+  options={["jb", "jl", "jbe", "jae"]}
+  answer={1}
+  explanation="jl is signed less-than (uses SF/OF). jb/jbe/jae are the unsigned family (use CF)."
+/>
+
+## if / else
+
+```c
+int max(int a, int b) { return a > b ? a : b; }
+```
+A branchy compilation:
+```
+max:
+    cmp edi, esi      ; compare a, b  (a in edi, b in esi)
+    jg  .a_bigger     ; if a > b (signed), jump
+    mov eax, esi      ; else result = b
+    ret
+.a_bigger:
+    mov eax, edi      ; result = a
+    ret
+```
+
+## Loops
+
+A `for`/`while` becomes a compare-and-jump at the bottom (or top). A counting loop:
+
+```c
+int sum_n(int n) { int s = 0; for (int i = 0; i < n; i++) s += i; return s; }
+```
+```
+sum_n:
+    xor eax, eax        ; s = 0  (xor reg,reg is the idiom for zero)
+    xor ecx, ecx        ; i = 0
+.loop:
+    cmp ecx, edi        ; compare i, n
+    jge .done           ; if i >= n, exit
+    add eax, ecx        ; s += i
+    inc ecx             ; i++
+    jmp .loop
+.done:
+    ret
+```
+
+<KnowledgeCheck
+  id="cf-xor"
+  type="mcq"
+  prompt="Why do compilers emit `xor eax, eax` to set a register to zero?"
+  options={[
+    "It is the only way to zero a register",
+    "It is a short, fast idiom that breaks dependencies and zeros the register",
+    "It adds eax to itself",
+    "It compares eax with zero"
+  ]}
+  answer={1}
+  explanation="xor reg,reg is smaller and faster than mov reg,0 and is the standard zeroing idiom."
+/>
+
+## Conditional moves (cmov): branchless selection
+
+Branches can be expensive when the CPU mispredicts them. For simple selections, compilers emit
+**conditional moves** that have no branch at all:
+
+```
+; max(a,b) branchless:
+    mov eax, esi      ; eax = b
+    cmp edi, esi      ; compare a, b
+    cmovg eax, edi    ; if a > b, eax = a
+    ret
+```
+
+`cmovg` copies only if the condition holds — no jump, no misprediction risk. The trade-off:
+`cmov` always evaluates both values, so it's a win only when both are cheap and the branch is
+unpredictable.
+
+<KnowledgeCheck
+  id="cf-cmov"
+  type="mcq"
+  prompt="What is the main advantage of cmov over a conditional jump?"
+  options={[
+    "It uses less memory",
+    "It avoids branch misprediction by not branching",
+    "It can call functions",
+    "It is the only way to compare values"
+  ]}
+  answer={1}
+  explanation="cmov is branchless, so it can't be mispredicted — useful for unpredictable, cheap selections."
+/>
+
+## Recap
+
+- Flags (ZF, SF, CF, OF) summarize the last operation; `cmp` and `test` set them deliberately.
+- Conditional jumps come in **signed** (`jl/jg/...`) and **unsigned** (`jb/ja/...`) families —
+  the machine root of the C comparison pitfall.
+- `if`/loops are compare-and-jump; `xor reg,reg` zeros a register.
+- `cmov` selects without branching, dodging mispredictions for simple cases.
+
+## Practice
+
+Apply branchless thinking in the IDE: implement **branchless abs** and a **branchless select**
+below — the C-level versions of what `cmov`/bit tricks do in hardware.
+
+Next: **Procedures, the Stack, and the ABI** — how function calls actually work.

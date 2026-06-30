@@ -1,0 +1,22 @@
+Implement a conditional select: return `a` when `cond` is non-zero, otherwise `b`. This is the
+C-level version of the `cmov` (conditional move) instruction — choosing a value based on a
+condition, ideally without a branch.
+
+## Your task
+
+In `select.c`, implement:
+
+```c
+int select_int(int cond, int a, int b);
+```
+
+Return `a` if `cond != 0`, else `b`. Any non-zero `cond` (including negative) counts as true.
+
+## Hints (no spoilers)
+
+- The straightforward version is `return cond ? a : b;` — correct, and a compiler may turn it
+  into a `cmov`.
+- For a branchless version: convert `cond` into a mask that is all-ones when true and all-zeros
+  when false (e.g., `-(cond != 0)`), then blend: `(a & mask) | (b & ~mask)`.
+
+Use **Run** to experiment and **Submit** to grade.

@@ -1,0 +1,148 @@
+# Memory Layout, Buffer Overflows, and Defenses
+
+Now that you know the return address sits on the stack, you can understand the most famous class
+of security vulnerability in systems software: the **stack buffer overflow**. This lesson shows
+how it works, why it's so dangerous, and the layered defenses that modern systems deploy.
+
+## A vulnerable function
+
+```c
+void greet(void) {
+  char name[16];
+  gets(name);          // reads input with NO bounds check (never use gets!)
+  printf("Hi %s\n", name);
+}
+```
+
+The local array `name[16]` lives in `greet`'s stack frame. Below it (at higher addresses, since
+the stack grows down toward the buffer) sit saved registers and ultimately the **return
+address** that `ret` will jump to. `gets` writes as many bytes as the input contains — with no
+limit.
+
+```
+higher addresses
+  | ... return address ...   |  <- ret jumps here
+  | saved rbp                |
+  | name[15] ... name[0]     |  <- buffer; writing past it climbs toward the return address
+lower addresses
+```
+
+If the input is longer than 16 bytes, the extra bytes **overwrite saved registers and then the
+return address**. When `greet` executes `ret`, it jumps wherever the attacker's bytes point.
+
+<KnowledgeCheck
+  id="bo-what"
+  type="mcq"
+  prompt="What critical value can a stack buffer overflow overwrite to hijack control flow?"
+  options={[
+    "The CPU clock speed",
+    "The saved return address on the stack",
+    "The program's source code",
+    "The heap size"
+  ]}
+  answer={1}
+  explanation="Writing past a stack buffer can overwrite the saved return address, so ret jumps to attacker-chosen code."
+/>
+
+## Classic exploitation
+
+- **Code injection.** Historically, attackers placed machine code ("shellcode") in the buffer
+  and overwrote the return address to point at it — the CPU would then execute their code.
+- **Return-oriented programming (ROP).** When code injection was blocked (see NX below),
+  attackers chained together existing snippets ("gadgets") ending in `ret`, overwriting the
+  stack with a sequence of return addresses to compute arbitrary behavior from the program's
+  own code.
+
+<KnowledgeCheck
+  id="bo-rop"
+  type="mcq"
+  prompt="Return-oriented programming (ROP) works by:"
+  options={[
+    "Injecting new shellcode into the stack",
+    "Chaining existing code 'gadgets' (ending in ret) via overwritten return addresses",
+    "Disabling the CPU",
+    "Rewriting the program on disk"
+  ]}
+  answer={1}
+  explanation="ROP reuses existing instruction sequences ending in ret, sidestepping defenses against injecting new code."
+/>
+
+## The layered defenses
+
+No single defense is enough; modern systems stack several:
+
+- **Stack canaries (stack protector).** The compiler places a random "canary" value between
+  local buffers and the saved return address. Before returning, it checks the canary; if an
+  overflow changed it, the program aborts. (`-fstack-protector`.)
+- **NX / DEP (no-execute).** Memory pages are either writable or executable, not both. The
+  stack is non-executable, so injected shellcode on the stack won't run. (This pushed attackers
+  toward ROP.)
+- **ASLR (address space layout randomization).** The OS randomizes the base addresses of the
+  stack, heap, and libraries each run, so attackers can't reliably predict where anything is.
+- **PIE (position-independent executable).** Lets the main program itself be loaded at a
+  randomized base, extending ASLR to program code.
+
+<Aside kind="insight">
+These defenses are a layered "defense in depth": canaries detect the classic overwrite, NX stops
+injected code, and ASLR/PIE make addresses unpredictable so ROP/return-to-libc is far harder.
+Defeating modern systems usually requires chaining multiple bugs (e.g., an info leak to beat
+ASLR plus an overflow).
+</Aside>
+
+<KnowledgeCheck
+  id="bo-canary"
+  type="mcq"
+  prompt="How does a stack canary detect an overflow?"
+  options={[
+    "It encrypts the buffer",
+    "A random value placed before the return address is checked on return; a change means overflow",
+    "It makes the stack read-only",
+    "It randomizes addresses"
+  ]}
+  answer={1}
+  explanation="A known random value sits between buffers and the return address; if return-time verification finds it altered, the program aborts."
+/>
+
+<KnowledgeCheck
+  id="bo-nx"
+  type="mcq"
+  prompt="What does NX (no-execute) prevent?"
+  options={[
+    "Reading the stack",
+    "Executing code from data pages like the stack (blocking injected shellcode)",
+    "Calling functions",
+    "Overflowing buffers"
+  ]}
+  answer={1}
+  explanation="NX marks data pages non-executable, so attacker code written to the stack/heap can't be run directly."
+/>
+
+## Writing safe code
+
+The real fix is to never overflow in the first place:
+
+- Never use `gets`; use bounded input (`fgets` with a size).
+- Always pass and respect buffer lengths (`strncpy`/`snprintf`, or better, track sizes).
+- Validate indices; compute sizes with overflow checks (Module 1).
+- Prefer memory-safe languages (Rust) where the domain allows.
+
+<Aside kind="note">
+HastOS compiles submissions with **AddressSanitizer**, which detects out-of-bounds stack/heap
+writes at runtime and reports them precisely. If your `memcpy`-style code writes one byte too
+far, ASan will tell you exactly where — turning a silent, exploitable bug into an immediate,
+fixable error.
+</Aside>
+
+## Recap
+
+- A stack buffer overflow can overwrite the saved return address, hijacking control flow.
+- Exploits evolved from code injection to ROP as defenses appeared.
+- Layered defenses: stack canaries (detect), NX/DEP (no injected code), ASLR/PIE (unpredictable
+  addresses).
+- The durable fix is bounds discipline; sanitizers catch overflows during development.
+
+## Practice
+
+Revisit **`my_memcpy`** with overflow awareness — copying one byte too many is exactly the bug
+class above, and ASan will flag it. That wraps Module M2: you can now read x86-64, follow calls,
+and reason about memory safety at the machine level.

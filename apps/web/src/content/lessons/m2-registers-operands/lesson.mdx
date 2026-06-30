@@ -1,0 +1,164 @@
+# Registers and Operands
+
+Beneath every C program is a stream of machine instructions operating on a small set of
+ultra-fast storage locations called **registers**. To read disassembly — a skill that pays off
+in debugging, performance work, and security — you first need to know the registers and the
+ways instructions name their operands.
+
+## The general-purpose registers
+
+x86-64 has 16 general-purpose registers (GPRs), each 64 bits wide. Eight have historical names;
+eight are simply numbered:
+
+```
+64-bit:  rax rbx rcx rdx  rsi rdi rbp rsp  r8  r9  r10 r11 r12 r13 r14 r15
+```
+
+Each can be accessed at narrower widths, which is essential for reading code that mixes types:
+
+```
+64-bit   32-bit   16-bit   8-bit(low)
+rax      eax      ax       al
+rbx      ebx      bx       bl
+rcx      ecx      cx       cl
+...
+r8       r8d      r8w      r8b
+```
+
+<Aside kind="insight">
+A quirk worth memorizing: writing to a 32-bit register (e.g., `mov eax, 1`) **zeroes the upper
+32 bits** of the full 64-bit register. Writing to 16- or 8-bit sub-registers does *not* clear
+the upper bits. This is why compilers often use 32-bit ops even for 64-bit-ish work.
+</Aside>
+
+Some registers have conventional roles you'll see constantly:
+
+- `rsp` — the **stack pointer** (top of the stack).
+- `rbp` — the **base/frame pointer** (often points into the current stack frame).
+- `rax` — typically holds **return values** and arithmetic results.
+- `rdi, rsi, rdx, rcx, r8, r9` — the first six **integer arguments** (System V ABI).
+
+<KnowledgeCheck
+  id="ro-subreg"
+  type="mcq"
+  prompt="What is the 32-bit form of the register rdx?"
+  options={["dx", "edx", "rdx32", "dl"]}
+  answer={1}
+  explanation="The 32-bit form prefixes with 'e' (edx); 16-bit is dx; 8-bit low is dl."
+/>
+
+## The three operand types
+
+Almost every instruction names operands in one of three forms:
+
+1. **Immediate** — a constant baked into the instruction, written with `$` in AT&T syntax
+   (`$42`) or as a bare number in Intel (`42`).
+2. **Register** — a register name; the value is read from / written to that register.
+3. **Memory** — an address; the value is read from / written to RAM at that address.
+
+The memory form is where the richness lives.
+
+## Memory operands: base, index, scale, displacement
+
+A memory operand computes an **effective address** using up to four parts. In Intel syntax:
+
+```
+[ base + index*scale + displacement ]
+```
+
+- **base** — a register holding a starting address.
+- **index** — a register holding an element number.
+- **scale** — 1, 2, 4, or 8 (the element size).
+- **displacement** — a constant offset.
+
+This single addressing mode directly expresses array and struct access. For an `int` array
+(`scale = 4`) based at `rdi` with index `rsi`:
+
+```
+; Intel syntax: load a[i] into eax  (a in rdi, i in rsi, ints are 4 bytes)
+mov eax, [rdi + rsi*4]
+```
+
+The effective address is `rdi + rsi*4`; the CPU reads 4 bytes there into `eax`. That one line
+is `a[i]`.
+
+<KnowledgeCheck
+  id="ro-addr"
+  type="mcq"
+  prompt="If rdi = 1000 and rsi = 3, what address does `[rdi + rsi*4]` reference?"
+  options={["1003", "1012", "4003", "1000"]}
+  answer={1}
+  explanation="1000 + 3*4 = 1012 — the 4th int (index 3) in an array of 4-byte ints based at 1000."
+/>
+
+## AT&T vs. Intel syntax
+
+You'll encounter two notations for the same instructions. The differences trip people up:
+
+- **Operand order is reversed.** AT&T is `op src, dst`; Intel is `op dst, src`.
+- **Registers**: AT&T prefixes `%` (`%rax`); Intel uses bare names (`rax`).
+- **Immediates**: AT&T prefixes `$` (`$5`); Intel uses bare numbers (`5`).
+- **Sizes**: AT&T suffixes the mnemonic (`movq`, `movl`); Intel infers from operands.
+- **Memory**: AT&T `disp(base, index, scale)`; Intel `[base + index*scale + disp]`.
+
+The same "move 5 into eax":
+
+```
+AT&T:   movl $5, %eax
+Intel:  mov  eax, 5
+```
+
+<Aside kind="note">
+Linux tools (`objdump`, `gdb`) default to AT&T; much documentation and Windows tooling use
+Intel. Pick one to think in, but be able to flip. This course uses Intel syntax for readability.
+</Aside>
+
+<KnowledgeCheck
+  id="ro-order"
+  type="mcq"
+  prompt="In AT&T syntax, `movl $5, %eax` does what?"
+  options={[
+    "Moves eax into the constant 5",
+    "Moves the constant 5 into eax (src, dst order)",
+    "Adds 5 to eax",
+    "Compares 5 and eax"
+  ]}
+  answer={1}
+  explanation="AT&T is src, dst — so the immediate 5 is the source and eax the destination."
+/>
+
+## Reading a tiny function
+
+Putting it together, here's a function and its (Intel) disassembly:
+
+```c
+int third(int *a) { return a[2]; }
+```
+
+```
+third:
+    mov eax, [rdi + 8]   ; rdi = a; +8 = 2 ints * 4 bytes; load a[2] into eax
+    ret                  ; return value is in eax
+```
+
+The argument `a` arrived in `rdi`, the element address is `rdi + 2*4 = rdi + 8`, the result
+goes in `eax`, and `ret` returns it. You just read machine code.
+
+<KnowledgeCheck
+  id="ro-read"
+  type="mcq"
+  prompt="In `mov eax, [rdi + 8]` where rdi points to an int array, which element is loaded?"
+  options={["a[8]", "a[2]", "a[4]", "a[1]"]}
+  answer={1}
+  explanation="Ints are 4 bytes, so +8 bytes is index 2: a[2]."
+/>
+
+## Recap
+
+- 16 GPRs, each addressable at 64/32/16/8 bits; 32-bit writes zero the upper half.
+- `rsp`/`rbp` manage the stack; `rax` holds results; `rdi,rsi,rdx,rcx,r8,r9` pass args.
+- Operands are immediate, register, or memory; memory uses base+index*scale+disp.
+- AT&T (`%`, `$`, src→dst) vs Intel (bare, dst←src) — same instructions, different notation.
+
+Next: **Data Movement and Arithmetic** — how values flow and compute, including the famous
+`lea` instruction.

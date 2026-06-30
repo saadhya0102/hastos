@@ -288,6 +288,64 @@ int main(void) {
 #include "impl.c"
 `;
 
+const BABS_HEADER = `#ifndef BRANCHLESS_ABS_H
+#define BRANCHLESS_ABS_H
+int my_abs(int x);
+#endif
+`;
+
+const BABS_DRIVER = `#include "babs.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  CHECK("positive", my_abs(5) == 5, "abs(5) should be 5");
+  CHECK("negative", my_abs(-5) == 5, "abs(-5) should be 5");
+  CHECK("zero", my_abs(0) == 0, "abs(0) should be 0");
+  CHECK("large_positive", my_abs(123456) == 123456, "abs(123456) should be 123456");
+  CHECK("large_negative", my_abs(-123456) == 123456, "abs(-123456) should be 123456");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const SELECT_HEADER = `#ifndef SELECT_H
+#define SELECT_H
+int select_int(int cond, int a, int b);
+#endif
+`;
+
+const SELECT_DRIVER = `#include "select.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  CHECK("true_one", select_int(1, 10, 20) == 10, "cond=1 should select a (10)");
+  CHECK("false_zero", select_int(0, 10, 20) == 20, "cond=0 should select b (20)");
+  CHECK("truthy_nonone", select_int(7, 1, 2) == 1, "any non-zero cond should select a");
+  CHECK("negative_cond", select_int(-3, 1, 2) == 1, "negative (non-zero) cond should select a");
+  CHECK("equal_values", select_int(0, 5, 5) == 5, "equal values, cond=0 should select b (5)");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -426,6 +484,46 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       two: "hidden",
       negative_one: "hidden",
       one_half: "hidden",
+    },
+  },
+
+  "m2-p-branchless-abs": {
+    id: "m2-p-branchless-abs",
+    languageId: 50,
+    header: { name: "babs.h", content: BABS_HEADER },
+    driver: BABS_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "babs.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      positive: "sample",
+      negative: "hidden",
+      zero: "hidden",
+      large_positive: "hidden",
+      large_negative: "hidden",
+    },
+  },
+
+  "m2-p-conditional-select": {
+    id: "m2-p-conditional-select",
+    languageId: 50,
+    header: { name: "select.h", content: SELECT_HEADER },
+    driver: SELECT_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "select.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      true_one: "sample",
+      false_zero: "hidden",
+      truthy_nonone: "hidden",
+      negative_cond: "hidden",
+      equal_values: "hidden",
     },
   },
 };

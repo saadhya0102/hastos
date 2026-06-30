@@ -1,0 +1,168 @@
+# Procedures, the Stack, and the ABI
+
+Function calls feel atomic in C, but at the machine level they're a careful dance of stack
+manipulation and register conventions. This is the **calling convention** (ABI), and it's the
+contract that lets separately-compiled functions — even in different languages — call each other.
+
+## The stack
+
+The stack is a region of memory that grows **downward** (toward lower addresses) on x86-64.
+`rsp` always points at the current top. Two instructions manage it:
+
+- `push x` — decrement `rsp` by 8, then store `x` at `[rsp]`.
+- `pop r`  — load `[rsp]` into `r`, then increment `rsp` by 8.
+
+The stack holds return addresses, saved registers, local variables, and spilled values.
+
+<KnowledgeCheck
+  id="ps-grow"
+  type="mcq"
+  prompt="What happens to rsp when you `push` a value on x86-64?"
+  options={[
+    "rsp increases by 8",
+    "rsp decreases by 8",
+    "rsp is unchanged",
+    "rsp is set to 0"
+  ]}
+  answer={1}
+  explanation="The stack grows downward; push subtracts 8 from rsp, then writes at the new top."
+/>
+
+## call and ret
+
+- `call f` — **pushes the return address** (the address of the instruction after the call)
+  onto the stack, then jumps to `f`.
+- `ret` — **pops the return address** off the stack into the instruction pointer, resuming the
+  caller.
+
+So a `call`/`ret` pair is really "push where to come back, jump; later pop it and go back."
+The return address living on the stack is exactly what buffer overflows attack (next lesson).
+
+<KnowledgeCheck
+  id="ps-call"
+  type="mcq"
+  prompt="What does the `call` instruction push onto the stack?"
+  options={[
+    "All the function arguments",
+    "The return address (where to resume after the callee returns)",
+    "The value of rax",
+    "Nothing"
+  ]}
+  answer={1}
+  explanation="call pushes the return address, then jumps; ret pops it to resume the caller."
+/>
+
+## The System V AMD64 calling convention
+
+On Linux/macOS, integer/pointer arguments go in registers, in order:
+
+```
+arg1  arg2  arg3  arg4  arg5  arg6   (further args go on the stack)
+rdi   rsi   rdx   rcx   r8    r9
+```
+
+The **return value** comes back in `rax` (and `rdx` for 128-bit returns). Floating-point args
+use `xmm0`–`xmm7`.
+
+```c
+long add3(long a, long b, long c) { return a + b + c; }
+```
+```
+add3:
+    lea rax, [rdi + rsi]   ; rax = a + b   (a=rdi, b=rsi)
+    add rax, rdx           ; rax = (a+b) + c   (c=rdx)
+    ret                    ; return value in rax
+```
+
+<KnowledgeCheck
+  id="ps-args"
+  type="mcq"
+  prompt="In the System V AMD64 ABI, which register holds the FIRST integer argument?"
+  options={["rax", "rdi", "rsi", "rbp"]}
+  answer={1}
+  explanation="Order is rdi, rsi, rdx, rcx, r8, r9; rdi is first. rax holds the return value."
+/>
+
+## Caller-saved vs. callee-saved
+
+Registers are shared, so the ABI splits responsibility for preserving them across a call:
+
+- **Caller-saved** (volatile): `rax, rcx, rdx, rsi, rdi, r8–r11`. A callee may clobber these,
+  so if the *caller* needs them after the call, it must save them first.
+- **Callee-saved** (non-volatile): `rbx, rbp, r12–r15`. If a *callee* wants to use these, it
+  must save and restore them (you'll see `push rbx` ... `pop rbx`).
+
+This is why disassembled functions often start by pushing `rbx`/`r12` and end by popping them.
+
+<KnowledgeCheck
+  id="ps-saved"
+  type="mcq"
+  prompt="A function wants to use rbx (callee-saved). What must it do?"
+  options={[
+    "Nothing special",
+    "Save rbx on entry and restore it before returning",
+    "Tell the caller to avoid rbx",
+    "Move rbx into rax first"
+  ]}
+  answer={1}
+  explanation="Callee-saved registers must be preserved by the callee: push on entry, pop before ret."
+/>
+
+## Stack frames and the frame pointer
+
+Each active call has a **stack frame** holding its saved registers, locals, and the return
+address. A traditional prologue/epilogue uses `rbp` as a stable **frame pointer**:
+
+```
+func:
+    push rbp            ; save caller's frame pointer
+    mov  rbp, rsp       ; establish our frame pointer
+    sub  rsp, 32        ; reserve 32 bytes for locals
+    ...                 ; body uses [rbp - k] for locals
+    leave               ; mov rsp, rbp ; pop rbp   (tear down frame)
+    ret
+```
+
+Optimized code often **omits the frame pointer** (`-fomit-frame-pointer`), freeing `rbp` as a
+general register and addressing locals via `rsp` directly.
+
+<Aside kind="note">
+The **red zone** is a 128-byte area just below `rsp` that leaf functions (those that call no one)
+may use as scratch without adjusting `rsp` — a small optimization in the System V ABI. Also note
+the ABI requires `rsp` to be 16-byte aligned at each `call`.
+</Aside>
+
+## Recursion on the stack
+
+Each recursive call gets its own frame, which is why deep recursion can overflow the stack:
+
+```c
+long fact(long n) { return n <= 1 ? 1 : n * fact(n - 1); }
+```
+Every `fact` call pushes a return address and frame; `fact(100000)` would exhaust the stack
+(stack overflow) — the machine-level reason recursion depth is bounded.
+
+<KnowledgeCheck
+  id="ps-recursion"
+  type="mcq"
+  prompt="Why can very deep recursion cause a crash?"
+  options={[
+    "The CPU runs out of registers",
+    "Each call consumes a stack frame; too many exhausts the limited stack (stack overflow)",
+    "ret stops working after 1000 calls",
+    "Recursion is not allowed in C"
+  ]}
+  answer={1}
+  explanation="Each call pushes a frame; the stack is finite, so unbounded depth overflows it."
+/>
+
+## Recap
+
+- The stack grows down; `push`/`pop` move `rsp`; `call` pushes a return address, `ret` pops it.
+- System V passes args in `rdi, rsi, rdx, rcx, r8, r9`, returns in `rax`.
+- Caller-saved (`rax, rcx, rdx, rsi, rdi, r8–r11`) vs callee-saved (`rbx, rbp, r12–r15`).
+- Frames hold locals/saved regs; `rbp` is the optional frame pointer; mind the red zone and
+  16-byte alignment.
+
+Next: **Memory Layout, Buffer Overflows, and Defenses** — how the stack becomes an attack
+surface.
