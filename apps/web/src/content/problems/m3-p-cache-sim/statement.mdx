@@ -1,0 +1,34 @@
+Implement a **direct-mapped cache simulator**. Given the cache geometry and a trace of byte
+addresses, count how many accesses **hit** and how many **miss**. This cements the
+tag/set/offset address breakdown from the lesson.
+
+## Your task
+
+In `cachesim.c`, implement:
+
+```c
+void cache_sim(int num_sets, int block_bytes, const unsigned long *addrs,
+               int n, int *hits, int *misses);
+```
+
+Simulate a **direct-mapped** cache (one line per set) over the `n` addresses, writing the totals
+through `*hits` and `*misses`.
+
+## How a direct-mapped lookup works
+
+For each byte address:
+- `line = addr / block_bytes`
+- `set  = line % num_sets`
+- `tag  = line / num_sets`
+
+Keep, per set, a valid bit and the currently-stored tag. If the set is valid and its tag matches
+→ **hit**. Otherwise → **miss**, and you load this line (store its tag, mark valid), replacing
+whatever was there (direct-mapped has no choice).
+
+## Constraints & hints
+
+- `num_sets` and `block_bytes` are powers of two; `num_sets <= 4096` (a local array indexed by
+  set works fine).
+- Initialize all sets as invalid. `n` may be 0.
+
+Use **Run** to print your counts on a sample trace, then **Submit** to grade.

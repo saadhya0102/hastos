@@ -1,0 +1,124 @@
+# Locality and Cache-Friendly Code
+
+Caches reward predictable, reuse-heavy access. The two properties that make code fast are
+**temporal locality** (reuse the same data soon) and **spatial locality** (use nearby data
+soon). Most practical optimization is about increasing one or both.
+
+## Temporal and spatial locality
+
+- **Temporal locality**: if you touch a value, you'll likely touch it again soon — so keep it in
+  cache by reusing it before it's evicted (e.g., hoist a repeatedly-read value into a local).
+- **Spatial locality**: if you touch an address, you'll likely touch its neighbors soon — so lay
+  data out contiguously and walk it in order, using the whole 64-byte line you paid to load.
+
+<KnowledgeCheck
+  id="lo-define"
+  type="mcq"
+  prompt="Walking an array front-to-back primarily exploits which kind of locality?"
+  options={["Temporal", "Spatial", "Neither", "Both equally and only temporal"]}
+  answer={1}
+  explanation="Sequential access uses each loaded cache line fully — that's spatial locality (neighbors come for free)."
+/>
+
+## Row-major vs. column-major: the canonical example
+
+C stores 2D arrays in **row-major** order: `a[i][j]` is at `i*ncols + j`, so an entire row is
+contiguous. Traversal order therefore matters enormously:
+
+```c
+// FAST: inner loop walks contiguous memory (good spatial locality)
+for (int i = 0; i < n; i++)
+  for (int j = 0; j < n; j++)
+    sum += a[i][j];        // a[i][0], a[i][1], ... are adjacent
+
+// SLOW: inner loop jumps by a full row each step (stride n)
+for (int j = 0; j < n; j++)
+  for (int i = 0; i < n; i++)
+    sum += a[i][j];        // a[0][j], a[1][j], ... are n*4 bytes apart
+```
+
+The two loops do the *same* arithmetic and the *same* number of accesses. The first can be many
+times faster because it uses each cache line fully; the second touches one element per line and
+thrashes.
+
+<KnowledgeCheck
+  id="lo-rowmajor"
+  type="mcq"
+  prompt="In C (row-major), which loop nest over a[n][n] is more cache-friendly?"
+  options={[
+    "Outer i, inner j (a[i][j] with j innermost)",
+    "Outer j, inner i (a[i][j] with i innermost)",
+    "They are identical in performance",
+    "Neither accesses memory"
+  ]}
+  answer={0}
+  explanation="With j innermost you walk contiguous row elements; i innermost strides by a full row, wasting most of each cache line."
+/>
+
+## Stride and cache-line utilization
+
+**Stride** is the byte gap between consecutive accesses. Stride-1 (contiguous) uses all 16 ints
+of a 64-byte line before moving on — 1 miss per 16 elements. A large stride (e.g., one column of
+a big matrix) touches a single element per line — 1 miss per element, 16x more memory traffic.
+
+<Aside kind="insight">
+Rule of thumb: aim for small, regular strides. Every cache line you load costs ~100 ns; using
+only 4 of its 64 bytes wastes 94% of that cost. "Cache-friendly" largely means "use the whole
+line you already paid for."
+</Aside>
+
+<KnowledgeCheck
+  id="lo-stride"
+  type="mcq"
+  prompt="For a 64-byte line and 4-byte ints, stride-1 access incurs roughly how many misses per 16 elements (cold)?"
+  options={["16", "8", "1", "0"]}
+  answer={2}
+  explanation="16 contiguous ints fill one 64-byte line, so ~1 compulsory miss covers all 16 — vs. 16 misses for column (large-stride) access."
+/>
+
+## Data layout: AoS vs. SoA
+
+How you group fields affects locality:
+
+- **Array of Structs (AoS)**: `struct P { float x, y, z; } pts[N];` — good when you use all fields
+  of each element together.
+- **Struct of Arrays (SoA)**: `float xs[N], ys[N], zs[N];` — good when you sweep one field across
+  all elements (e.g., sum all `x`), because that field is contiguous.
+
+If a hot loop reads only `x` from a million points, SoA keeps the loaded lines full of `x`
+values; AoS wastes two-thirds of each line on `y`/`z` you didn't need.
+
+<KnowledgeCheck
+  id="lo-soa"
+  type="mcq"
+  prompt="A hot loop reads only the x field across a million points. Which layout is more cache-efficient?"
+  options={[
+    "Array of Structs (AoS)",
+    "Struct of Arrays (SoA)",
+    "They are identical",
+    "Neither touches cache"
+  ]}
+  answer={1}
+  explanation="SoA stores all x values contiguously, so loaded lines are full of needed data; AoS interleaves unused y/z."
+/>
+
+## Practical techniques
+
+- Traverse in memory order (match loop nesting to layout).
+- Hoist repeatedly-used values into locals/registers (temporal locality).
+- Shrink hot structures so more fit per line and in cache.
+- Choose AoS vs SoA based on the dominant access pattern.
+
+## Recap
+
+- Temporal locality = reuse soon; spatial locality = use neighbors soon.
+- Row-major C arrays: keep the contiguous index innermost.
+- Small strides use whole cache lines; large strides waste most of each line.
+- AoS vs SoA: lay data out to match how the hot loop reads it.
+
+## Practice
+
+Implement a **matrix transpose** below and reason about its access pattern — transpose is the
+textbook case where one of the two index orders is cache-hostile.
+
+Next: **Loop Tiling (Blocking)** — restructuring loops so working sets fit in cache.

@@ -1,0 +1,110 @@
+# False Sharing
+
+Caching usually helps, but in multithreaded code it can quietly destroy performance through
+**false sharing** — when independent variables used by different threads happen to live on the
+same cache line, forcing the cores to fight over it.
+
+## Cache coherence, briefly
+
+In a multicore CPU, each core has its own L1/L2 cache, and hardware keeps them **coherent**: if
+one core writes a cache line, other cores' copies of that line are invalidated so nobody reads
+stale data. Coherence operates at **cache-line granularity** (64 bytes) — not per variable.
+
+That last point is the trap.
+
+<KnowledgeCheck
+  id="fs-granularity"
+  type="mcq"
+  prompt="At what granularity does cache coherence track ownership?"
+  options={["Per byte", "Per variable", "Per cache line (~64 bytes)", "Per page (4 KB)"]}
+  answer={2}
+  explanation="Coherence is line-granular; a write anywhere in a 64-byte line invalidates other cores' copies of the whole line."
+/>
+
+## The false-sharing scenario
+
+```c
+struct { long a; long b; } counters;   // a and b are 8 bytes apart -> same 64-byte line
+
+// Thread 1 hammers counters.a; Thread 2 hammers counters.b
+```
+
+`a` and `b` are *logically independent* — the threads never touch each other's variable. But
+they sit on the **same cache line**. Every time thread 1 writes `a`, it invalidates thread 2's
+cached copy of the line (which holds `b`), and vice versa. The line "ping-pongs" between cores,
+turning what should be fast local writes into a storm of coherence traffic. Throughput can drop
+by 5–10x with *no* logical contention.
+
+<KnowledgeCheck
+  id="fs-what"
+  type="mcq"
+  prompt="What causes false sharing?"
+  options={[
+    "Two threads writing the same variable",
+    "Two threads writing different variables that share one cache line",
+    "Using too little memory",
+    "Reading a variable many times"
+  ]}
+  answer={1}
+  explanation="It's 'false' because the variables are independent; they just unluckily share a line, so writes invalidate each other."
+/>
+
+## The fix: pad to separate lines
+
+Ensure each hotly-written variable lives on its own cache line, using alignment/padding:
+
+```c
+#include <stdalign.h>
+
+struct PaddedCounter {
+  alignas(64) long value;   // force each counter onto its own 64-byte line
+};
+struct PaddedCounter counters[2];   // counters[0] and counters[1] never share a line
+```
+
+Or pad inside a struct:
+
+```c
+struct { long a; char pad[56]; long b; } counters;  // a and b now 64 bytes apart
+```
+
+After padding, each thread owns its line exclusively — no invalidation traffic, full speed.
+
+<Aside kind="warning">
+Padding trades memory for speed and should target only **hot, concurrently-written** data
+(per-thread counters, queue head/tail pointers). Don't blanket-pad everything — it wastes cache
+capacity and can *hurt* by reducing how much fits in cache.
+</Aside>
+
+<KnowledgeCheck
+  id="fs-fix"
+  type="mcq"
+  prompt="How do you eliminate false sharing between two per-thread counters?"
+  options={[
+    "Make them volatile",
+    "Align/pad each so they live on separate cache lines",
+    "Use a single shared counter",
+    "Read them less often"
+  ]}
+  answer={1}
+  explanation="Separating the variables onto distinct cache lines (alignas(64) or padding) stops cross-invalidation."
+/>
+
+## Where it shows up
+
+- Per-thread statistics/counters packed in an array.
+- A lock-free queue's `head` and `tail` on the same line (producers and consumers fight).
+- Flags or state for different threads grouped in one struct.
+
+This connects directly to the concurrency module: when you build a lock-free queue later, you'll
+pad `head` and `tail` apart precisely to avoid this.
+
+## Recap
+
+- Coherence tracks ownership per **cache line**, not per variable.
+- False sharing: independent variables on one line cause cores to invalidate each other's caches,
+  tanking throughput with no logical contention.
+- Fix by aligning/padding hot, concurrently-written data onto separate lines — selectively.
+
+That wraps Module M3. You can now reason quantitatively about memory performance: the latency
+ladder, cache mechanics, locality, blocking, and the concurrency pitfall of false sharing.

@@ -1,0 +1,23 @@
+Implement an in-order **matrix transpose** of a square `n x n` row-major integer matrix. Beyond
+correctness, this is the textbook example where one index order reads or writes memory with a
+cache-hostile stride.
+
+## Your task
+
+In `transpose.c`, implement:
+
+```c
+void transpose(int n, const int *src, int *dst);
+```
+
+Produce the transpose: `dst[j*n + i] = src[i*n + j]` for all `i, j`. `src` and `dst` are distinct
+buffers (no aliasing).
+
+## Hints (no spoilers)
+
+- A double loop over `i` and `j` with that one assignment is all the logic you need.
+- Note the locality tension: whichever index you put innermost, one of `src`/`dst` is accessed
+  contiguously and the other with stride `n`. (Blocking can mitigate this for big matrices — a
+  good follow-up to think about.)
+
+Use **Run** to experiment and **Submit** to grade across sizes (including a 64x64).

@@ -346,6 +346,86 @@ int main(void) {
 #include "impl.c"
 `;
 
+const CACHESIM_HEADER = `#ifndef CACHESIM_H
+#define CACHESIM_H
+void cache_sim(int num_sets, int block_bytes, const unsigned long *addrs,
+               int n, int *hits, int *misses);
+#endif
+`;
+
+const CACHESIM_DRIVER = `#include "cachesim.h"
+#include <stdio.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+  { unsigned long a[] = {0}; int h = 9, m = 9; cache_sim(4, 16, a, 1, &h, &m);
+    CHECK("single_miss", h == 0 && m == 1, "one cold access should be 0 hits, 1 miss"); }
+  { unsigned long a[] = {0, 4, 8}; int h = 9, m = 9; cache_sim(4, 16, a, 3, &h, &m);
+    CHECK("repeat_hit", h == 2 && m == 1, "same line reused should give 2 hits, 1 miss"); }
+  { unsigned long a[] = {0, 16, 0, 16}; int h = 9, m = 9; cache_sim(1, 16, a, 4, &h, &m);
+    CHECK("conflict_evict", h == 0 && m == 4, "single set alternating lines should give 4 misses"); }
+  { unsigned long a[] = {0, 16, 32, 0, 64, 0, 16}; int h = 9, m = 9; cache_sim(4, 16, a, 7, &h, &m);
+    CHECK("mixed_trace", h == 2 && m == 5, "expected 2 hits and 5 misses"); }
+  { unsigned long a[1] = {0}; int h = 9, m = 9; cache_sim(4, 16, a, 0, &h, &m);
+    CHECK("empty", h == 0 && m == 0, "n=0 should give 0 hits, 0 misses"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const TRANSPOSE_HEADER = `#ifndef TRANSPOSE_H
+#define TRANSPOSE_H
+void transpose(int n, const int *src, int *dst);
+#endif
+`;
+
+const TRANSPOSE_DRIVER = `#include "transpose.h"
+#include <stdio.h>
+#include <stdlib.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+static int check_t(int n) {
+  int *src = (int *)malloc((size_t)n * n * sizeof(int));
+  int *dst = (int *)malloc((size_t)n * n * sizeof(int));
+  for (int i = 0; i < n; i++)
+    for (int j = 0; j < n; j++)
+      src[i * n + j] = i * 100 + j;
+  transpose(n, src, dst);
+  int ok = 1;
+  for (int i = 0; i < n && ok; i++)
+    for (int j = 0; j < n && ok; j++)
+      if (dst[i * n + j] != j * 100 + i) ok = 0;
+  free(src); free(dst);
+  return ok;
+}
+
+int main(void) {
+  CHECK("one_by_one", check_t(1), "1x1 transpose failed");
+  CHECK("two_by_two", check_t(2), "2x2 transpose failed");
+  CHECK("three_by_three", check_t(3), "3x3 transpose failed");
+  CHECK("four_by_four", check_t(4), "4x4 transpose failed");
+  CHECK("large_64", check_t(64), "64x64 transpose failed");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -524,6 +604,46 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       truthy_nonone: "hidden",
       negative_cond: "hidden",
       equal_values: "hidden",
+    },
+  },
+
+  "m3-p-cache-sim": {
+    id: "m3-p-cache-sim",
+    languageId: 50,
+    header: { name: "cachesim.h", content: CACHESIM_HEADER },
+    driver: CACHESIM_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "cachesim.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      single_miss: "sample",
+      repeat_hit: "hidden",
+      conflict_evict: "hidden",
+      mixed_trace: "hidden",
+      empty: "hidden",
+    },
+  },
+
+  "m3-p-transpose": {
+    id: "m3-p-transpose",
+    languageId: 50,
+    header: { name: "transpose.h", content: TRANSPOSE_HEADER },
+    driver: TRANSPOSE_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "transpose.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      one_by_one: "sample",
+      two_by_two: "hidden",
+      three_by_three: "hidden",
+      four_by_four: "hidden",
+      large_64: "hidden",
     },
   },
 };

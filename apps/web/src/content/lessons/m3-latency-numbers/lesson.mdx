@@ -1,0 +1,108 @@
+# Latency Numbers and the Cost Model
+
+Performance intuition starts with one humbling fact: **the CPU is fast, memory is slow, and the
+gap is enormous.** Modern processors execute billions of instructions per second, but a single
+trip to main memory can stall them for hundreds of cycles. Knowing the rough cost of each
+operation turns "it feels slow" into a concrete plan.
+
+## The latency ladder
+
+Approximate latencies (they vary by hardware, but the *ratios* are what matter):
+
+```
+operation                         ~time        ~relative
+register access                   <1 ns         1x
+L1 cache hit                       ~1 ns        ~1-4x
+L2 cache hit                       ~4 ns        ~10x
+L3 cache hit                       ~15 ns       ~40x
+main memory (DRAM)                 ~100 ns      ~200x
+SSD random read                    ~100 us      ~100,000x
+network round trip (same DC)       ~0.5 ms      ~500,000x
+disk (HDD) seek                    ~10 ms       ~10,000,000x
+```
+
+Each step down is roughly **10x–1000x** slower than the one above. The jump from cache to DRAM
+(~100x) is the one that dominates everyday program performance.
+
+<Aside kind="insight">
+A useful mental image: if an L1 hit took 1 second, DRAM would take ~2 minutes, an SSD read ~1
+day, and a cross-country network round trip ~months. The hierarchy isn't a minor detail — it's
+the dominant force in performance.
+</Aside>
+
+<KnowledgeCheck
+  id="ln-order"
+  type="mcq"
+  prompt="Roughly how much slower is a main-memory access than an L1 cache hit?"
+  options={["About 2x", "About 10x", "About 100x", "About the same"]}
+  answer={2}
+  explanation="DRAM (~100 ns) vs L1 (~1 ns) is roughly a 100x difference — the gap that caching exists to hide."
+/>
+
+## The cost model: memory dominates
+
+Because arithmetic is cheap and memory is expensive, the performance of most real programs is
+governed by **memory access patterns**, not instruction count. A loop that does a little math
+over cache-resident data can be 10–100x faster than the same math over data scattered across
+DRAM — even though the instruction count is identical.
+
+This reframes optimization: instead of "do fewer operations," the high-leverage question is
+often **"do fewer slow memory trips"** — keep hot data small, contiguous, and reused while it's
+in cache.
+
+<KnowledgeCheck
+  id="ln-dominates"
+  type="mcq"
+  prompt="For most real programs, what usually dominates performance?"
+  options={[
+    "The number of arithmetic instructions",
+    "Memory access patterns (cache behavior)",
+    "The number of functions defined",
+    "The length of variable names"
+  ]}
+  answer={1}
+  explanation="Arithmetic is cheap; memory is ~100x slower, so cache/memory behavior usually dominates runtime."
+/>
+
+## Throughput vs. latency
+
+Two different questions:
+
+- **Latency** — how long one operation takes (a single DRAM read ~100 ns).
+- **Throughput** — how many operations per second you can sustain (modern DRAM delivers tens of
+  GB/s when access is *streaming* and predictable).
+
+Hardware hides latency with **pipelining, out-of-order execution, and prefetching** — but only
+when access patterns are predictable. Random pointer-chasing defeats the prefetcher and exposes
+the full latency; sequential streaming lets the machine run near peak throughput. This is why
+"the same work" can have wildly different speeds.
+
+<Aside kind="note">
+The hardware **prefetcher** watches your access pattern and pulls upcoming cache lines in
+advance. Sequential and small-stride patterns are prefetcher-friendly; random access is not.
+Much of "cache-friendly code" is really "prefetcher-friendly code."
+</Aside>
+
+<KnowledgeCheck
+  id="ln-prefetch"
+  type="mcq"
+  prompt="Why is sequential array traversal often far faster than random pointer-chasing, even for the same number of accesses?"
+  options={[
+    "Sequential uses fewer instructions",
+    "Predictable access lets caches/prefetchers hide latency; random access exposes full DRAM latency",
+    "Random access uses more registers",
+    "There is no difference"
+  ]}
+  answer={1}
+  explanation="Predictable patterns are prefetched and stay in cache; random access stalls on full memory latency repeatedly."
+/>
+
+## Recap
+
+- Latencies climb ~10–1000x per level: register → L1 → L2 → L3 → DRAM → SSD → network → disk.
+- The cache-to-DRAM gap (~100x) dominates everyday performance.
+- Optimize memory trips, not just instruction count.
+- Latency is hidden by pipelining/prefetching only for predictable access; random access pays
+  full price.
+
+Next: **How Caches Work** — the mechanics behind these numbers.

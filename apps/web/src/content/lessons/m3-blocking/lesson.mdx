@@ -1,0 +1,106 @@
+# Loop Tiling (Blocking)
+
+Some algorithms reuse data many times but, written naively, evict it before the reuse happens.
+**Blocking** (also called **tiling**) restructures loops so that a small *block* of data stays
+in cache across all its reuses. Matrix multiply is the classic example.
+
+## Why naive matmul thrashes
+
+Computing `C = A x B` for n x n matrices:
+
+```c
+for (int i = 0; i < n; i++)
+  for (int j = 0; j < n; j++)
+    for (int k = 0; k < n; k++)
+      C[i][j] += A[i][k] * B[k][j];
+```
+
+The inner loop reads `B[k][j]` down a **column** — stride `n`, terrible spatial locality. Worse,
+for large `n`, by the time you reuse a row of `A` or a column of `B`, it has been evicted from
+cache. Each multiply effectively pays a memory miss; the cache buys you almost nothing despite
+massive *potential* reuse (each element of A and B is used n times).
+
+<KnowledgeCheck
+  id="bl-naive"
+  type="mcq"
+  prompt="In naive i-j-k matrix multiply, why does access to B hurt cache performance?"
+  options={[
+    "B is read down columns (large stride), wasting cache lines",
+    "B is too small to cache",
+    "B is never read",
+    "B uses floating point"
+  ]}
+  answer={0}
+  explanation="B[k][j] walks a column with stride n; each cache line yields one useful element, thrashing the cache."
+/>
+
+## The idea: work on blocks that fit in cache
+
+Instead of sweeping whole rows/columns, process the matrices in small **tiles** (say `T x T`)
+chosen so that the tiles of A, B, and C involved fit together in cache. Within a tile, every
+loaded value is reused many times before eviction.
+
+```c
+for (int ii = 0; ii < n; ii += T)
+  for (int jj = 0; jj < n; jj += T)
+    for (int kk = 0; kk < n; kk += T)
+      // multiply the T x T sub-blocks; their data stays hot in cache
+      for (int i = ii; i < ii + T; i++)
+        for (int j = jj; j < jj + T; j++)
+          for (int k = kk; k < kk + T; k++)
+            C[i][j] += A[i][k] * B[k][j];
+```
+
+Same arithmetic, same result — but now the inner triple-loop touches only `T x T` regions that
+stay resident, so each loaded element is reused `T` times from cache instead of being re-fetched
+from DRAM. Choosing `T` so that `3 * T*T * sizeof(elem)` fits in L1/L2 is the tuning knob.
+
+<KnowledgeCheck
+  id="bl-tile"
+  type="mcq"
+  prompt="What does blocking/tiling achieve?"
+  options={[
+    "Fewer total multiplications",
+    "Keeping a small working set resident in cache so loaded data is reused before eviction",
+    "Using more registers",
+    "Avoiding the use of B entirely"
+  ]}
+  answer={1}
+  explanation="Tiling restructures the loops so a cache-sized block is reused fully before being evicted, converting DRAM traffic into cache hits."
+/>
+
+## Arithmetic intensity
+
+A useful lens: **arithmetic intensity** = (useful arithmetic) / (bytes moved from memory).
+Blocking raises intensity by getting more compute out of each byte you fetch. Algorithms with
+low intensity (e.g., adding two big arrays once) are **memory-bound** — no amount of tiling helps
+because there's no reuse. High-reuse kernels (matmul, convolutions) benefit enormously.
+
+<Aside kind="insight">
+Blocking only helps when there is **reuse** to capture. A single streaming pass over data (read
+each element once) is already optimal for the cache; tiling it changes nothing. Identify reuse
+first, then block to keep it in cache.
+</Aside>
+
+<KnowledgeCheck
+  id="bl-reuse"
+  type="mcq"
+  prompt="For which workload does blocking NOT help?"
+  options={[
+    "Matrix multiplication",
+    "A single pass summing one large array (each element read once)",
+    "Repeated convolution over an image",
+    "Any nested loop with reuse"
+  ]}
+  answer={1}
+  explanation="With no data reuse (each element touched once), there's nothing for the cache to keep resident; blocking can't improve it."
+/>
+
+## Recap
+
+- Naive matmul thrashes because of column-stride access and eviction before reuse.
+- Blocking processes cache-sized tiles so loaded data is reused fully before eviction.
+- It works only when the algorithm has reuse (high arithmetic intensity); pure streaming passes
+  gain nothing.
+
+Next: **False Sharing** — when caches hurt *concurrent* code.

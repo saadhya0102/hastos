@@ -1,0 +1,128 @@
+# How Caches Work
+
+A cache is a small, fast memory that holds copies of recently-used data from the larger, slower
+memory below it. Understanding its structure — lines, sets, and ways — lets you predict hits and
+misses and explains why certain access patterns are catastrophically slow.
+
+## Cache lines: the unit of transfer
+
+Memory doesn't move byte-by-byte between cache and DRAM. It moves in fixed **cache lines**,
+typically **64 bytes** on x86-64. When you read a single `int`, the hardware fetches the entire
+64-byte line containing it. This is why **spatial locality** pays off: the neighbors came along
+for free.
+
+<KnowledgeCheck
+  id="co-line"
+  type="mcq"
+  prompt="When you read one 4-byte int that misses the cache, how much data is typically fetched from memory?"
+  options={["4 bytes", "16 bytes", "64 bytes (a full cache line)", "1 byte"]}
+  answer={2}
+  explanation="Caches transfer whole lines (~64 bytes), so neighbors of the requested int are loaded too."
+/>
+
+## Sets, ways, and the address breakdown
+
+A cache is organized as an array of **sets**, each containing some number of **ways** (line
+slots). To find data, the hardware splits the address into three fields:
+
+```
+| tag | set index | block offset |
+```
+
+- **block offset** — which byte within the 64-byte line (low `log2(line_size)` bits; 6 bits for
+  64-byte lines).
+- **set index** — which set to look in (next `log2(num_sets)` bits).
+- **tag** — the remaining high bits, stored alongside each cached line to confirm identity.
+
+Lookup: use the set index to pick a set, then compare the tag against the (valid) lines in that
+set. A match is a **hit**; otherwise a **miss** that fetches the line from below.
+
+<KnowledgeCheck
+  id="co-offset"
+  type="mcq"
+  prompt="For a 64-byte cache line, how many bits of the address are the block offset?"
+  options={["4", "6", "8", "16"]}
+  answer={1}
+  explanation="log2(64) = 6, so the low 6 bits select the byte within the line."
+/>
+
+## Three geometries
+
+- **Direct-mapped** (1 way per set): each address maps to exactly one slot. Simple and fast, but
+  two hot addresses that map to the same set evict each other repeatedly.
+- **Set-associative** (N ways): each set holds N lines; an address can live in any of the N
+  slots, reducing conflicts. Most real caches are 4-, 8-, or 16-way.
+- **Fully-associative** (one big set): any line anywhere. No conflict misses, but expensive to
+  search; used only for tiny caches (like the TLB).
+
+Within a set, when it's full, a **replacement policy** (often pseudo-LRU) chooses the victim.
+
+<KnowledgeCheck
+  id="co-assoc"
+  type="mcq"
+  prompt="What problem does set-associativity reduce compared to a direct-mapped cache?"
+  options={[
+    "Compulsory misses",
+    "Conflict misses (multiple hot addresses competing for one slot)",
+    "The cost of arithmetic",
+    "Branch mispredictions"
+  ]}
+  answer={1}
+  explanation="Multiple ways per set let competing addresses coexist, cutting conflict misses."
+/>
+
+## A worked decomposition
+
+Consider a direct-mapped cache: 64-byte lines, 256 sets (so 16 KB total). Address breakdown:
+
+- offset = 6 bits (64-byte line)
+- index = 8 bits (256 sets = 2^8)
+- tag = the rest
+
+For address `0x1F40` = `0001 1111 0100 0000`:
+- offset = low 6 bits = `000000` = 0
+- index = next 8 bits = `01111101` = 125
+- tag = remaining high bits.
+
+So this access lands in set 125, byte 0. Two addresses with the **same index but different tag**
+collide in a direct-mapped cache.
+
+<KnowledgeCheck
+  id="co-index"
+  type="numeric"
+  prompt="With 64-byte lines and 256 sets, how many low bits of an address are used for (offset + index) together?"
+  answer={14}
+  explanation="offset = 6 bits, index = 8 bits (256 sets), total 14 bits; the rest is the tag."
+/>
+
+## The three C's of misses
+
+Every miss falls into one of three categories — a vocabulary for diagnosing performance:
+
+- **Compulsory (cold)** — the first-ever access to a line; unavoidable without prefetching.
+- **Capacity** — the working set is larger than the cache, so lines get evicted before reuse.
+- **Conflict** — lines map to the same set and evict each other even though the cache isn't full
+  (a direct-mapped/low-associativity artifact).
+
+<KnowledgeCheck
+  id="co-miss"
+  type="mcq"
+  prompt="Your data fits in the cache, but two hot arrays keep evicting each other because they map to the same sets. What kind of miss is this?"
+  options={["Compulsory", "Capacity", "Conflict", "Coherence"]}
+  answer={2}
+  explanation="The cache isn't full (not capacity) and it's not the first access (not compulsory) — it's a conflict miss from set contention."
+/>
+
+## Recap
+
+- Data moves in 64-byte **lines**; reading one byte loads its whole line.
+- Addresses split into tag / set index / block offset; lookup matches the tag within a set.
+- Direct-mapped → set-associative → fully-associative trade simplicity for fewer conflicts.
+- Misses are compulsory, capacity, or conflict — the diagnostic vocabulary for tuning.
+
+## Practice
+
+Build a **cache simulator** below: given the geometry and an access trace, count hits and
+misses. Implementing the tag/index/offset split cements the model.
+
+Next: **Locality and Cache-Friendly Code** — turning this model into faster loops.
