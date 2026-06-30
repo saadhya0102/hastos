@@ -1,0 +1,174 @@
+# Lock-Free Programming and the ABA Problem
+
+The capstone of concurrency: building data structures that are correct **without locks**, using
+only atomic operations. Lock-free code can offer better scalability and avoids deadlock entirely,
+but it's among the hardest code to get right — every interleaving and memory-ordering subtlety
+matters. This is the flagship interview territory.
+
+## What "lock-free" means
+
+A data structure is **lock-free** if **at least one** thread always makes progress in a bounded
+number of steps, regardless of how others are scheduled (so no deadlock, and a stalled thread can't
+block everyone). Stronger is **wait-free** (every thread makes progress in bounded steps). Weaker
+is **obstruction-free**. The everyday goal is lock-free via **CAS loops**.
+
+<KnowledgeCheck
+  id="lf-define"
+  type="mcq"
+  prompt="What does 'lock-free' guarantee?"
+  options={[
+    "No atomics are used",
+    "At least one thread always makes progress in bounded steps, so the system can't deadlock or be blocked by a stalled thread",
+    "Every operation is instant",
+    "Only one thread at a time"
+  ]}
+  answer={1}
+  explanation="Lock-free guarantees system-wide progress (some thread advances) without locks, immune to deadlock and to a single stalled thread."
+/>
+
+## The CAS loop
+
+The fundamental lock-free idiom: read the current value, compute the new value, and **CAS** it in —
+retrying if someone changed it underneath you.
+
+```c
+// atomic increment via CAS (illustrative; fetch_add is better in practice)
+int old = atomic_load(&x);
+while (!atomic_compare_exchange_weak(&x, &old, old + 1)) {
+  /* old was updated to the current value; loop retries with fresh old */
+}
+```
+
+If another thread modified `x` between the load and the CAS, the CAS fails, `old` is refreshed, and
+you retry. Progress is guaranteed because a failure means *someone else* succeeded.
+
+<KnowledgeCheck
+  id="lf-cas"
+  type="mcq"
+  prompt="In a CAS loop, what happens when the CAS fails?"
+  options={[
+    "The program crashes",
+    "Another thread changed the value (made progress); you refresh your expected value and retry",
+    "The loop exits with an error",
+    "Nothing; CAS never fails"
+  ]}
+  answer={1}
+  explanation="A failed CAS means the value changed (someone else progressed); you reload the current value and retry — guaranteeing system progress."
+/>
+
+## The Treiber stack and where it breaks
+
+A classic lock-free stack pushes by CAS-ing the head:
+
+```c
+void push(Node *n) {
+  do { n->next = atomic_load(&head); }
+  while (!atomic_compare_exchange_weak(&head, &n->next, n));
+}
+```
+
+Pop is symmetric: read `head`, CAS `head` to `head->next`. It looks correct — but pop hides a
+vicious bug: the **ABA problem**.
+
+## The ABA problem
+
+CAS only checks that a value **equals** the expected one — not that it never changed. Consider pop:
+
+1. Thread 1 reads `head = A`, plans to set `head = A->next = B`. It pauses.
+2. Thread 2 pops A, pops B, then pushes A back. Now `head = A` again — but `A->next` is no longer B!
+3. Thread 1 resumes; its CAS sees `head == A` (expected!) and **succeeds**, setting `head = B` — a
+   node that was already removed/freed. Corruption or use-after-free.
+
+The value went **A → B → A**, so CAS was fooled into thinking nothing changed. This is the **ABA
+problem**, the signature hazard of naive lock-free code.
+
+<KnowledgeCheck
+  id="lf-aba"
+  type="mcq"
+  prompt="What is the ABA problem?"
+  options={[
+    "Two threads with the same name",
+    "A value changes A->B->A, so a CAS sees the original value and succeeds even though the state actually changed",
+    "A deadlock between A and B",
+    "An alignment bug"
+  ]}
+  answer={1}
+  explanation="CAS checks equality, not history; if a value returns to its original (A->B->A), CAS wrongly succeeds, causing corruption/use-after-free."
+/>
+
+## Mitigating ABA
+
+- **Tagged pointers / version counters** — pack a monotonically increasing tag with the pointer and
+  CAS both together (a double-width CAS). The tag changes on every update, so A-with-tag-1 ≠
+  A-with-tag-3.
+- **Hazard pointers** — threads publish the pointers they're using; memory isn't reclaimed while
+  referenced, preventing the "freed then reused" reappearance.
+- **Epoch-based reclamation (RCU-style)** — defer freeing until no thread could still hold a stale
+  reference.
+- **Avoid the hazard** — restrict the problem (e.g., single consumer) so reclamation races can't
+  occur.
+
+<KnowledgeCheck
+  id="lf-fix"
+  type="mcq"
+  prompt="Which technique directly defeats the ABA problem in a CAS?"
+  options={[
+    "Using volatile",
+    "Tagged pointers / version counters (CAS the value together with a changing tag)",
+    "Adding more threads",
+    "Using a bigger stack"
+  ]}
+  answer={1}
+  explanation="A version tag updated on every change makes A-then-A distinguishable (different tags), so CAS won't be fooled; hazard pointers/epochs are alternatives."
+/>
+
+## The MPSC simplification
+
+A general multi-producer/multi-consumer lock-free queue is very hard (reclamation, ABA). But many
+real systems need only **multi-producer, single-consumer (MPSC)**: many threads enqueue, exactly
+**one** thread dequeues. The single-consumer restriction eliminates consumer-side races and much of
+the ABA hazard, making a correct lock-free queue tractable — the producers CAS to publish nodes,
+and the lone consumer walks the list without competing dequeuers.
+
+<KnowledgeCheck
+  id="lf-mpsc"
+  type="mcq"
+  prompt="Why is a multi-producer/single-consumer (MPSC) queue easier to make lock-free than MPMC?"
+  options={[
+    "It uses no atomics",
+    "A single consumer removes consumer-side races and much of the reclamation/ABA hazard",
+    "It is slower",
+    "It only supports one producer"
+  ]}
+  answer={1}
+  explanation="With exactly one dequeuer, there are no competing consumers, so consumer-side ABA/reclamation races vanish, simplifying correctness."
+/>
+
+## When to go lock-free
+
+Rarely. Locks are simpler, easier to verify, and fast enough for the vast majority of code.
+Lock-free is justified for hot, highly-contended structures where lock overhead or
+priority-inversion/deadlock risk genuinely hurts — and only with rigorous testing (TSan, stress
+tests, many seeds), because bugs are nondeterministic and catastrophic.
+
+<Aside kind="insight">
+The progression of this module mirrors real engineering judgment: prefer a mutex; reach for a
+condition variable to wait; consider lock-free only when measurement demands it — and then lean
+hard on sanitizers and stress tests, because intuition is not enough at this level.
+</Aside>
+
+## Recap
+
+- Lock-free = guaranteed system-wide progress without locks, via CAS loops; immune to deadlock.
+- The Treiber stack shows the **ABA problem**: CAS checks equality, not history (A→B→A fools it).
+- Mitigate with tagged pointers/version counters, hazard pointers, epochs, or by restricting the
+  problem (e.g., single consumer).
+- MPSC is the tractable sweet spot; prefer locks unless measurement demands lock-free.
+
+## Practice
+
+The flagship: implement a **Lock-Free MPSC Queue** below, graded by a multi-producer stress test
+under ThreadSanitizer across multiple seeds. This is the canonical hard systems-interview problem —
+finishing it means you've genuinely mastered concurrency.
+
+That completes Module M7 — the heart of the course.

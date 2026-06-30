@@ -1,0 +1,166 @@
+# Threads, Shared State, and Data Races
+
+Processes isolate memory; **threads** deliberately share it. Multiple threads in one process run
+concurrently over the *same* address space — which is powerful and dangerous. The central hazard,
+the **data race**, is the source of the hardest bugs in systems programming. This module teaches
+you to reason about and tame shared state.
+
+## Threads share memory
+
+A **thread** is an independent flow of execution within a process. All threads in a process share
+the same heap, globals, and code — but each has its **own stack** and registers. Sharing memory
+means threads can communicate cheaply (just read/write shared variables) — and corrupt each other
+just as cheaply.
+
+```c
+#include <pthread.h>
+void *worker(void *arg) { /* runs concurrently */ return NULL; }
+
+pthread_t t;
+pthread_create(&t, NULL, worker, NULL);
+pthread_join(t, NULL);   // wait for it to finish
+```
+
+<KnowledgeCheck
+  id="tr-share"
+  type="mcq"
+  prompt="What do threads in the same process share, and what is private to each?"
+  options={[
+    "They share nothing",
+    "They share the heap/globals/code; each has its own stack and registers",
+    "They share stacks but not the heap",
+    "Everything is private"
+  ]}
+  answer={1}
+  explanation="Threads share the address space (heap, globals, code) but each has a private stack and register set."
+/>
+
+## The data race
+
+A **data race** occurs when two threads access the same memory location concurrently, **at least
+one access is a write**, and there's **no synchronization** ordering them. In C/C++, a data race
+is **undefined behavior** — not merely "you get one of two values," but anything.
+
+The canonical example: two threads incrementing a shared counter.
+
+```c
+long counter = 0;
+void *inc(void *_) {
+  for (int i = 0; i < 1000000; i++) counter++;   // RACE
+  return NULL;
+}
+// start two threads running inc(), join both
+// expected counter == 2000000 ... but you'll get LESS
+```
+
+<KnowledgeCheck
+  id="tr-race"
+  type="mcq"
+  prompt="What three conditions define a data race?"
+  options={[
+    "Two reads of the same variable",
+    "Concurrent access to the same location, at least one is a write, with no synchronization",
+    "Using more than one thread",
+    "Writing to disk from two threads"
+  ]}
+  answer={1}
+  explanation="A race needs concurrent access to one location, at least one writer, and no synchronization ordering them — and it's UB in C/C++."
+/>
+
+## Why the counter loses updates
+
+`counter++` looks atomic but compiles to **three** steps: load, add, store.
+
+```
+load  counter -> reg     ; read current value
+add   reg, 1             ; increment in register
+store reg -> counter      ; write back
+```
+
+Two threads can interleave so both load the same value, both add one, both store — and one
+increment is **lost**:
+
+```
+T1 load 41        T2 load 41
+T1 add  -> 42     T2 add  -> 42
+T1 store 42       T2 store 42      ; should be 43! one increment vanished
+```
+
+Run two threads doing a million increments each and you'll see a final total well below
+2,000,000 — and a *different* wrong number each run. That nondeterminism is the signature of a
+race.
+
+<KnowledgeCheck
+  id="tr-lost"
+  type="mcq"
+  prompt="Why can `counter++` from two threads lose increments?"
+  options={[
+    "The compiler deletes increments",
+    "It's load-add-store; threads can interleave so both read the same value and one store overwrites the other",
+    "Integers can't exceed a million",
+    "The CPU is too slow"
+  ]}
+  answer={1}
+  explanation="The read-modify-write isn't atomic; interleaving lets two increments collapse into one (a lost update)."
+/>
+
+## volatile is NOT the fix
+
+A common myth: mark the variable `volatile` and the race goes away. **It doesn't.** `volatile`
+stops the compiler from caching the value in a register and prevents certain reorderings, but it
+provides **no atomicity** and **no inter-thread ordering guarantees**. `counter++` on a `volatile`
+is still a non-atomic load-add-store.
+
+<KnowledgeCheck
+  id="tr-volatile"
+  type="mcq"
+  prompt="Does declaring the shared counter `volatile` fix the data race?"
+  options={[
+    "Yes",
+    "No — volatile gives no atomicity or synchronization; you still have a race",
+    "Only on single-core CPUs",
+    "Only with -O0"
+  ]}
+  answer={1}
+  explanation="volatile is about visibility to the compiler, not atomicity/ordering across threads; the race remains. Use atomics."
+/>
+
+## The fix: atomics
+
+C11 provides `<stdatomic.h>`. An `atomic_long` increment is performed as a single, indivisible
+read-modify-write the hardware guarantees:
+
+```c
+#include <stdatomic.h>
+atomic_long counter = 0;
+void *inc(void *_) {
+  for (int i = 0; i < 1000000; i++)
+    atomic_fetch_add(&counter, 1);   // indivisible; no lost updates
+  return NULL;
+}
+// now counter == 2000000, every run
+```
+
+Atomics are the building block for locks and lock-free data structures (later lessons). Tools like
+**ThreadSanitizer (TSan)** detect data races at runtime — HastOS uses TSan to grade concurrency
+problems, so a racy solution is caught, not silently "lucky."
+
+<Aside kind="insight">
+The mental shift for concurrency: correctness can't depend on timing. If two threads *can*
+interleave badly, eventually they *will*. Reason about all interleavings, or make operations
+atomic/synchronized so bad interleavings are impossible.
+</Aside>
+
+## Recap
+
+- Threads share the address space (heap/globals) but have private stacks.
+- A data race = concurrent access, ≥1 write, no synchronization → undefined behavior.
+- `counter++` is load-add-store; interleaving loses updates nondeterministically.
+- `volatile` does NOT fix races; **atomics** (C11 `<stdatomic.h>`) do. TSan catches races.
+
+## Practice
+
+The **Spinlock** problem (after the lock lessons) has you build mutual exclusion from atomics —
+the primitive that makes `counter++` safe without per-operation atomics.
+
+Next: **Mutexes and Spinlocks** — the two ways to enforce mutual exclusion.

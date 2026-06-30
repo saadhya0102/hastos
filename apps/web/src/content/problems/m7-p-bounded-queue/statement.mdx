@@ -1,0 +1,24 @@
+Implement a **blocking bounded queue** (the classic producer/consumer buffer) using a mutex and
+two condition variables. `bq_push` blocks while the queue is full; `bq_pop` blocks while empty.
+Graded with concurrent producers and consumers — every item must come out exactly once, in FIFO
+order, with no lost or duplicated values and no deadlock.
+
+## Your task
+
+In `bqueue.c`, implement `bq_push` and `bq_pop` (`bq_init` is provided):
+
+```c
+void bq_push(bqueue_t *q, int value);  // block if full, then enqueue
+int  bq_pop(bqueue_t *q);              // block if empty, then dequeue (FIFO)
+```
+
+## Hints (no spoilers)
+
+- `bq_push`: lock the mutex; `while (count == cap) pthread_cond_wait(&not_full, &m);` then store at
+  `tail`, advance `tail = (tail+1) % cap`, `count++`, `pthread_cond_signal(&not_empty)`, unlock.
+- `bq_pop`: mirror it — wait on `not_empty`, read from `head`, advance, `count--`, signal
+  `not_full`, unlock, return the value.
+- **Always** wait in a `while` loop (spurious/lost wakeups), and change state + signal **while
+  holding the mutex**.
+
+Use **Submit** to run the concurrent tests.

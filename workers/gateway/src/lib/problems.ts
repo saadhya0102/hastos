@@ -596,6 +596,245 @@ int main(void) {
 #include "impl.c"
 `;
 
+const SPINLOCK_HEADER = `#ifndef SPINLOCK_H
+#define SPINLOCK_H
+#include <stdatomic.h>
+typedef struct { atomic_int locked; } spinlock_t;
+void spin_init(spinlock_t *s);
+void spin_lock(spinlock_t *s);
+void spin_unlock(spinlock_t *s);
+#endif
+`;
+
+const SPINLOCK_DRIVER = `#include "spinlock.h"
+#include <stdio.h>
+#include <pthread.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+static spinlock_t g_lock;
+static long g_counter;
+static int g_iters;
+static void *sl_worker(void *u) { (void)u;
+  for (int i = 0; i < g_iters; i++) { spin_lock(&g_lock); g_counter++; spin_unlock(&g_lock); }
+  return NULL;
+}
+static long sl_run(int n, int iters) {
+  spin_init(&g_lock); g_counter = 0; g_iters = iters;
+  pthread_t t[16];
+  for (int i = 0; i < n; i++) pthread_create(&t[i], NULL, sl_worker, NULL);
+  for (int i = 0; i < n; i++) pthread_join(t[i], NULL);
+  return g_counter;
+}
+int main(void) {
+  CHECK("single", sl_run(1, 1000) == 1000, "1 thread x1000 should total 1000");
+  CHECK("two_threads", sl_run(2, 50000) == 100000, "2x50000 should total 100000");
+  CHECK("four_threads", sl_run(4, 50000) == 200000, "4x50000 should total 200000");
+  CHECK("reacquire", sl_run(1, 3) == 3, "repeated lock/unlock should work");
+  CHECK("high_contention", sl_run(8, 20000) == 160000, "8x20000 should total 160000");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const BQUEUE_HEADER = `#ifndef BQUEUE_H
+#define BQUEUE_H
+#include <pthread.h>
+typedef struct {
+  int *buf; int cap, head, tail, count;
+  pthread_mutex_t m; pthread_cond_t not_full; pthread_cond_t not_empty;
+} bqueue_t;
+void bq_init(bqueue_t *q, int *storage, int cap);
+void bq_push(bqueue_t *q, int value);
+int bq_pop(bqueue_t *q);
+#endif
+`;
+
+const BQUEUE_DRIVER = `#include "bqueue.h"
+#include <stdio.h>
+#include <pthread.h>
+#include <stdatomic.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+static atomic_long g_sum;
+typedef struct { bqueue_t *q; int from, to; } prod_arg;
+typedef struct { bqueue_t *q; int n; } cons_arg;
+static void *bq_producer(void *a) { prod_arg *p = a;
+  for (int v = p->from; v < p->to; v++) bq_push(p->q, v); return NULL; }
+static void *bq_consumer(void *a) { cons_arg *c = a;
+  for (int i = 0; i < c->n; i++) atomic_fetch_add(&g_sum, (long)bq_pop(c->q)); return NULL; }
+
+static long bq_run(int cap, int producers, int consumers, int total) {
+  static int store[1024];
+  bqueue_t q; bq_init(&q, store, cap);
+  atomic_store(&g_sum, 0);
+  pthread_t pt[16], ct[16]; prod_arg pa[16]; cons_arg ca[16];
+  int per_p = total / producers, per_c = total / consumers;
+  for (int i = 0; i < producers; i++) { pa[i].q = &q; pa[i].from = i * per_p; pa[i].to = (i + 1) * per_p;
+    pthread_create(&pt[i], NULL, bq_producer, &pa[i]); }
+  for (int i = 0; i < consumers; i++) { ca[i].q = &q; ca[i].n = per_c;
+    pthread_create(&ct[i], NULL, bq_consumer, &ca[i]); }
+  for (int i = 0; i < producers; i++) pthread_join(pt[i], NULL);
+  for (int i = 0; i < consumers; i++) pthread_join(ct[i], NULL);
+  return atomic_load(&g_sum);
+}
+
+int main(void) {
+  { int store[8]; bqueue_t q; bq_init(&q, store, 8);
+    bq_push(&q, 1); bq_push(&q, 2); bq_push(&q, 3);
+    int ok = bq_pop(&q) == 1 && bq_pop(&q) == 2 && bq_pop(&q) == 3;
+    CHECK("single_thread_fifo", ok, "FIFO order should be 1,2,3"); }
+  CHECK("spsc", bq_run(8, 1, 1, 1000) == 499500L, "SPSC sum of 0..999 should be 499500");
+  CHECK("mpsc", bq_run(8, 4, 1, 1000) == 499500L, "MPSC sum should be 499500 (no lost/dup)");
+  CHECK("small_capacity", bq_run(1, 2, 2, 1000) == 499500L, "cap=1 forces blocking; sum 499500");
+  CHECK("mpmc", bq_run(16, 2, 2, 1000) == 499500L, "MPMC sum should be 499500");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const THREADPOOL_HEADER = `#ifndef THREADPOOL_H
+#define THREADPOOL_H
+#include <pthread.h>
+typedef struct { void (*fn)(void *); void *arg; } tp_task_t;
+typedef struct {
+  pthread_t threads[64]; int num_workers;
+  tp_task_t *tasks; int cap, head, tail, count;
+  pthread_mutex_t m; pthread_cond_t has_work; pthread_cond_t has_space;
+  int shutdown;
+} pool_t;
+void tp_init(pool_t *p, int num_workers);
+void tp_submit(pool_t *p, void (*fn)(void *), void *arg);
+void tp_shutdown(pool_t *p);
+#endif
+`;
+
+const THREADPOOL_DRIVER = `#include "threadpool.h"
+#include <stdio.h>
+#include <stdint.h>
+#include <stdatomic.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+static atomic_int g_count;
+static atomic_long g_argsum;
+static void task_inc(void *a) { (void)a; atomic_fetch_add(&g_count, 1); }
+static void task_arg(void *a) { atomic_fetch_add(&g_argsum, (long)(intptr_t)a); }
+
+static int run_pool(int workers, int m) {
+  pool_t p; tp_init(&p, workers); atomic_store(&g_count, 0);
+  for (int i = 0; i < m; i++) tp_submit(&p, task_inc, NULL);
+  tp_shutdown(&p);
+  return atomic_load(&g_count);
+}
+
+int main(void) {
+  CHECK("runs_all_small", run_pool(2, 10) == 10, "all 10 tasks should run");
+  CHECK("single_worker", run_pool(1, 500) == 500, "500 tasks with 1 worker");
+  CHECK("many_tasks", run_pool(4, 2000) == 2000, "2000 tasks with 4 workers");
+  { pool_t p; tp_init(&p, 4); atomic_store(&g_argsum, 0);
+    for (int i = 1; i <= 100; i++) tp_submit(&p, task_arg, (void *)(intptr_t)i);
+    tp_shutdown(&p);
+    CHECK("args_summed", atomic_load(&g_argsum) == 5050L, "sum of args 1..100 should be 5050"); }
+  CHECK("high_workers", run_pool(8, 2000) == 2000, "2000 tasks with 8 workers");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const MPSC_HEADER = `#ifndef MPSC_H
+#define MPSC_H
+#include <stdatomic.h>
+typedef struct mpsc_node { _Atomic(struct mpsc_node *) next; long value; } mpsc_node_t;
+typedef struct { _Atomic(mpsc_node_t *) head; mpsc_node_t *tail; mpsc_node_t stub; } mpsc_t;
+void mpsc_init(mpsc_t *q);
+void mpsc_enqueue(mpsc_t *q, mpsc_node_t *n);
+mpsc_node_t *mpsc_dequeue(mpsc_t *q);
+#endif
+`;
+
+const MPSC_DRIVER = `#include "mpsc.h"
+#include <stdio.h>
+#include <pthread.h>
+#include <stdlib.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+typedef struct { mpsc_t *q; int from, to; } mp_arg;
+static void *mp_producer(void *a) { mp_arg *p = a;
+  for (int v = p->from; v < p->to; v++) {
+    mpsc_node_t *n = malloc(sizeof(mpsc_node_t));
+    n->value = v; mpsc_enqueue(p->q, n);
+  }
+  return NULL;
+}
+
+static int run_mpsc(int producers, int per, int check_fifo) {
+  mpsc_t q; mpsc_init(&q);
+  int total = producers * per;
+  char *seen = calloc((size_t)total, 1);
+  int *last = NULL;
+  if (check_fifo) { last = malloc(sizeof(int) * producers); for (int i = 0; i < producers; i++) last[i] = -1; }
+  pthread_t pt[16]; mp_arg pa[16];
+  for (int i = 0; i < producers; i++) { pa[i].q = &q; pa[i].from = i * per; pa[i].to = (i + 1) * per;
+    pthread_create(&pt[i], NULL, mp_producer, &pa[i]); }
+  int got = 0, ok = 1;
+  while (got < total) {
+    mpsc_node_t *n = mpsc_dequeue(&q);
+    if (!n) continue;
+    long v = n->value;
+    if (v < 0 || v >= total || seen[v]) ok = 0;
+    else { seen[v] = 1; got++;
+      if (check_fifo) { int p = (int)(v / per), i = (int)(v % per); if (i <= last[p]) ok = 0; last[p] = i; }
+    }
+    /* nodes are intentionally not freed (avoids freeing the embedded stub; TSan has no leak check) */
+  }
+  for (int i = 0; i < producers; i++) pthread_join(pt[i], NULL);
+  for (int i = 0; i < total; i++) if (!seen[i]) ok = 0;
+  free(seen); if (last) free(last);
+  return ok;
+}
+
+int main(void) {
+  CHECK("spsc_small", run_mpsc(1, 100, 0), "1 producer x100 should be received once each");
+  CHECK("mpsc_two", run_mpsc(2, 1000, 0), "2 producers x1000 received once each");
+  CHECK("mpsc_four", run_mpsc(4, 2000, 0), "4 producers x2000 received once each");
+  CHECK("per_producer_fifo", run_mpsc(4, 1000, 1), "per-producer FIFO order preserved");
+  CHECK("stress", run_mpsc(8, 5000, 0), "8 producers x5000 received once each");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -894,6 +1133,86 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       exhaust: "hidden",
       free_reuse: "hidden",
       refill: "hidden",
+    },
+  },
+
+  "m7-p-spinlock": {
+    id: "m7-p-spinlock",
+    languageId: 50,
+    header: { name: "spinlock.h", content: SPINLOCK_HEADER },
+    driver: SPINLOCK_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "spinlock.c",
+    compilerOptions: "-std=c11 -O1 -g -pthread -fsanitize=thread",
+    cpuTimeLimit: 6,
+    wallTimeLimit: 15,
+    memoryLimitKb: 262144,
+    testVisibility: {
+      single: "sample",
+      two_threads: "hidden",
+      four_threads: "hidden",
+      reacquire: "hidden",
+      high_contention: "hidden",
+    },
+  },
+
+  "m7-p-bounded-queue": {
+    id: "m7-p-bounded-queue",
+    languageId: 50,
+    header: { name: "bqueue.h", content: BQUEUE_HEADER },
+    driver: BQUEUE_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "bqueue.c",
+    compilerOptions: "-std=c11 -O1 -g -pthread -fsanitize=address,undefined",
+    cpuTimeLimit: 6,
+    wallTimeLimit: 15,
+    memoryLimitKb: 262144,
+    testVisibility: {
+      single_thread_fifo: "sample",
+      spsc: "hidden",
+      mpsc: "hidden",
+      small_capacity: "hidden",
+      mpmc: "hidden",
+    },
+  },
+
+  "m7-p-thread-pool": {
+    id: "m7-p-thread-pool",
+    languageId: 50,
+    header: { name: "threadpool.h", content: THREADPOOL_HEADER },
+    driver: THREADPOOL_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "threadpool.c",
+    compilerOptions: "-std=c11 -O1 -g -pthread -fsanitize=address,undefined",
+    cpuTimeLimit: 6,
+    wallTimeLimit: 15,
+    memoryLimitKb: 262144,
+    testVisibility: {
+      runs_all_small: "sample",
+      single_worker: "hidden",
+      many_tasks: "hidden",
+      args_summed: "hidden",
+      high_workers: "hidden",
+    },
+  },
+
+  "m7-p-lockfree-mpsc": {
+    id: "m7-p-lockfree-mpsc",
+    languageId: 50,
+    header: { name: "mpsc.h", content: MPSC_HEADER },
+    driver: MPSC_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "mpsc.c",
+    compilerOptions: "-std=c11 -O1 -g -pthread -fsanitize=thread",
+    cpuTimeLimit: 8,
+    wallTimeLimit: 18,
+    memoryLimitKb: 524288,
+    testVisibility: {
+      spsc_small: "sample",
+      mpsc_two: "hidden",
+      mpsc_four: "hidden",
+      per_producer_fifo: "hidden",
+      stress: "hidden",
     },
   },
 };

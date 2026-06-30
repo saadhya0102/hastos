@@ -1,0 +1,153 @@
+# Memory Models and Ordering
+
+Here we reach the deep end of concurrency. On modern hardware, the order in which one thread's
+memory writes become **visible** to another thread is **not** necessarily the order you wrote them
+in code. The **memory model** defines the rules, and **memory ordering** on atomics is how you
+regain control. This underpins all correct lock-free code.
+
+## Why operations get reordered
+
+Both the **compiler** (optimizer) and the **CPU** (out-of-order execution, store buffers) may
+reorder memory operations to go faster, as long as a *single thread's* observable behavior is
+preserved. But across threads, those reorderings become visible. A write to `data` then `flag` in
+your source might be seen by another thread as `flag` first, then `data` — breaking naive
+hand-rolled synchronization.
+
+```c
+// Thread 1                    // Thread 2
+data = 42;                     while (!ready) {}
+ready = 1;                     printf("%d\n", data);  // might print 0!
+```
+
+Without proper ordering, Thread 2 can observe `ready == 1` *before* it sees `data == 42`.
+
+<KnowledgeCheck
+  id="mm-reorder"
+  type="mcq"
+  prompt="Why might another thread see your writes in a different order than written?"
+  options={[
+    "Memory is random",
+    "The compiler and CPU reorder operations for speed, preserving only single-thread behavior; cross-thread visibility can differ",
+    "Threads always run backwards",
+    "It only happens with bugs in your code"
+  ]}
+  answer={1}
+  explanation="Optimizers and out-of-order CPUs reorder memory ops (preserving single-thread semantics); other threads can observe a different order without explicit ordering constraints."
+/>
+
+## Sequential consistency: the intuitive model
+
+**Sequential consistency (SC)** is the easy-to-reason-about model: it's *as if* all threads'
+operations were interleaved into one global order consistent with each thread's program order. C11
+atomics default to `memory_order_seq_cst`, which gives SC — correct and simple, but potentially the
+slowest because it forbids many reorderings (often requiring fences).
+
+```c
+atomic_store(&x, 1);              // defaults to seq_cst
+int v = atomic_load(&x);
+```
+
+If unsure, **use the default (seq_cst)**: correct first, optimize later.
+
+<KnowledgeCheck
+  id="mm-sc"
+  type="mcq"
+  prompt="What does sequential consistency (the default for C11 atomics) guarantee?"
+  options={[
+    "The fastest possible code",
+    "Behavior as if all operations interleave in a single global order respecting each thread's program order",
+    "No need for atomics",
+    "That reordering never happens in hardware"
+  ]}
+  answer={1}
+  explanation="SC presents a single consistent global interleaving — the intuitive model — at the cost of forbidding optimizations, so it can be slower."
+/>
+
+## Acquire/release: cheaper, sufficient ordering
+
+The most useful weaker ordering is **acquire/release**, which creates a one-way barrier perfect for
+publishing data:
+
+- A **release** store ensures all writes *before* it in this thread are visible to any thread that
+  later does an **acquire** load of the same atomic.
+- An **acquire** load ensures reads *after* it see everything the releasing thread wrote before its
+  release.
+
+This is exactly the "publish then read" pattern — and it's how a lock works (unlock = release,
+lock = acquire):
+
+```c
+// Thread 1 (publisher)            // Thread 2 (consumer)
+data = 42;                         if (atomic_load_explicit(&ready, memory_order_acquire)) {
+atomic_store_explicit(&ready, 1,       // sees data == 42, guaranteed
+  memory_order_release);               printf("%d\n", data);
+                                   }
+```
+
+The release/acquire pair establishes a **happens-before** edge: everything before the release
+happens-before everything after the matching acquire.
+
+<KnowledgeCheck
+  id="mm-relacq"
+  type="mcq"
+  prompt="What does a release store paired with an acquire load guarantee?"
+  options={[
+    "Nothing useful",
+    "Writes before the release are visible to a thread after it performs the matching acquire (a happens-before edge)",
+    "The two threads run in parallel",
+    "The variable is locked"
+  ]}
+  answer={1}
+  explanation="Release publishes prior writes; a matching acquire observes them — establishing happens-before, the basis of correct lock-free publishing."
+/>
+
+## Relaxed ordering
+
+`memory_order_relaxed` provides **atomicity but no ordering** — the operation won't tear, but it
+imposes no happens-before relationship with other memory. It's correct only for things like
+independent counters where you don't need to order other memory around them (e.g., a statistics
+counter you read at the end).
+
+```c
+atomic_fetch_add_explicit(&hits, 1, memory_order_relaxed);  // count only; ordering irrelevant
+```
+
+Using relaxed where you actually need ordering is a classic, devastating bug.
+
+<KnowledgeCheck
+  id="mm-relaxed"
+  type="mcq"
+  prompt="When is memory_order_relaxed appropriate?"
+  options={[
+    "For implementing a lock",
+    "For atomic operations that need no ordering of surrounding memory, e.g., an independent statistics counter",
+    "Always; it's fastest",
+    "Never"
+  ]}
+  answer={1}
+  explanation="Relaxed gives atomicity without ordering — fine for standalone counters, wrong wherever you must order other memory (use acquire/release/seq_cst there)."
+/>
+
+## Practical guidance
+
+- **Default to `seq_cst`** until profiling shows it matters.
+- Use **acquire/release** for the publish/consume pattern (and it's what lock acquire/release map
+  to).
+- Use **relaxed** only for genuinely independent atomics (counters, flags you don't order around).
+- Most application code should just use **locks**, which give you correct ordering for free.
+  Hand-rolled orderings are for performance-critical lock-free code — write tests and run TSan.
+
+<Aside kind="insight">
+Mantra: *correctness first.* Reach for the strongest ordering (seq_cst) or just a mutex, prove it
+right, and only relax orderings under measurement. Subtle memory-ordering bugs are nearly
+impossible to reproduce and debug after the fact.
+</Aside>
+
+## Recap
+
+- Compilers and CPUs reorder memory ops; cross-thread visibility can differ from program order.
+- Sequential consistency (the C11 default) is the intuitive, correct, sometimes-slow baseline.
+- Acquire/release creates a happens-before edge — the cheap, correct tool for publish/consume.
+- Relaxed = atomic without ordering (counters only). Prefer locks/seq_cst; relax only with care.
+
+Next: **Lock-Free Programming and the ABA Problem** — the module's capstone.

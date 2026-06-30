@@ -1,0 +1,127 @@
+# Deadlock and Avoidance
+
+Locks prevent races, but careless locking creates a new failure: **deadlock**, where threads wait
+on each other forever and the program hangs. Deadlock is a favorite interview topic because the
+reasoning is crisp: there are exactly four conditions, and breaking any one prevents it.
+
+## The classic deadlock
+
+Two threads, two locks, opposite orders:
+
+```c
+// Thread 1                 // Thread 2
+lock(A);                    lock(B);
+lock(B);   // waits for B   lock(A);   // waits for A
+...                         ...
+```
+
+If Thread 1 holds A and wants B, while Thread 2 holds B and wants A, **neither can proceed** —
+each waits for a lock the other holds. The program hangs. This is a **deadly embrace**.
+
+<KnowledgeCheck
+  id="dl-classic"
+  type="mcq"
+  prompt="Two threads acquire locks A and B in opposite orders and hang. What is this?"
+  options={[
+    "A data race",
+    "A deadlock (each holds one lock and waits for the other)",
+    "A spurious wakeup",
+    "Starvation"
+  ]}
+  answer={1}
+  explanation="Each thread holds one lock and waits for the other's — a circular wait that never resolves: deadlock."
+/>
+
+## The four necessary conditions
+
+Deadlock requires **all four** of these simultaneously (Coffman conditions):
+
+1. **Mutual exclusion** — resources (locks) are held exclusively.
+2. **Hold and wait** — a thread holds one resource while waiting for another.
+3. **No preemption** — resources can't be forcibly taken; they're released only voluntarily.
+4. **Circular wait** — a cycle of threads each waiting for the next's resource.
+
+Because all four are necessary, **breaking any one prevents deadlock**.
+
+<KnowledgeCheck
+  id="dl-conditions"
+  type="mcq"
+  prompt="How many of the four Coffman conditions must hold for deadlock, and what follows?"
+  options={[
+    "Any one; so it's unavoidable",
+    "All four simultaneously; so breaking any single one prevents deadlock",
+    "At least two; breaking is impossible",
+    "None; deadlock is random"
+  ]}
+  answer={1}
+  explanation="All four (mutual exclusion, hold-and-wait, no preemption, circular wait) are necessary, so eliminating any one prevents deadlock."
+/>
+
+## Prevention: break a condition
+
+The most practical fix targets **circular wait** with a **global lock ordering**: always acquire
+locks in a fixed, agreed order (e.g., by address or id). If everyone takes A before B, no cycle can
+form.
+
+```c
+// Always lock lower-address first:
+void transfer(Account *x, Account *y) {
+  Account *first  = x < y ? x : y;
+  Account *second = x < y ? y : x;
+  lock(&first->m); lock(&second->m);   // consistent order -> no cycle
+  ...
+  unlock(&second->m); unlock(&first->m);
+}
+```
+
+Other strategies: eliminate **hold-and-wait** (acquire all locks at once, or release before
+acquiring more); allow **preemption** via `trylock` + back off (release held locks and retry,
+which risks livelock); or reduce locking (coarser locks, lock-free structures).
+
+<KnowledgeCheck
+  id="dl-order"
+  type="mcq"
+  prompt="What is the most common practical way to prevent deadlock among multiple locks?"
+  options={[
+    "Use more threads",
+    "Acquire locks in a consistent global order (breaking circular wait)",
+    "Never unlock",
+    "Use volatile"
+  ]}
+  answer={1}
+  explanation="A global lock ordering ensures no cyclic wait can form, eliminating deadlock by breaking the circular-wait condition."
+/>
+
+## Deadlock vs. livelock vs. starvation
+
+- **Deadlock** — threads blocked forever, no progress, no CPU used.
+- **Livelock** — threads keep *running* and reacting to each other but make no progress (e.g., two
+  people stepping aside in the same direction repeatedly). Often from naive `trylock`-and-retry
+  without randomized backoff.
+- **Starvation** — a thread makes progress eventually possible but is *perpetually* denied (e.g., a
+  low-priority thread never scheduled, or a writer starved by a stream of readers). Fairness
+  policies address it.
+
+<KnowledgeCheck
+  id="dl-livelock"
+  type="mcq"
+  prompt="Threads keep actively retrying and yielding to each other but never make progress. This is:"
+  options={[
+    "Deadlock",
+    "Livelock",
+    "A data race",
+    "Normal behavior"
+  ]}
+  answer={1}
+  explanation="Livelock: threads are active (not blocked) but their mutual reactions prevent progress — fix with randomized backoff."
+/>
+
+## Recap
+
+- Deadlock = circular waiting on held resources; the program hangs.
+- It needs all four Coffman conditions; break any one to prevent it.
+- The go-to fix is a **consistent global lock order** (breaks circular wait).
+- Distinguish deadlock (blocked forever), livelock (active but stuck), and starvation (perpetually
+  denied).
+
+Next: **Memory Models and Ordering** — the subtle rules behind atomics and lock-free code.

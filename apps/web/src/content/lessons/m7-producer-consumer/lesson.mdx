@@ -1,0 +1,126 @@
+# Producer/Consumer and Thread Pools
+
+The **producer/consumer** pattern — producers put work into a shared queue, consumers take it out
+— is the backbone of concurrent systems. Generalize it and you get a **thread pool**: a fixed set
+of worker threads pulling tasks from a queue. This is how web servers, job systems, and runtimes
+get parallelism without the cost of spawning a thread per task.
+
+## Producer/consumer recap
+
+Producers and consumers communicate through a **bounded queue** (last lesson). This **decouples**
+their rates: a burst of production is buffered; consumers drain at their own pace. The queue's
+blocking behavior provides natural **backpressure** — producers block when it's full, so a fast
+producer can't overwhelm slow consumers or exhaust memory.
+
+<KnowledgeCheck
+  id="pc-backpressure"
+  type="mcq"
+  prompt="What does a bounded (blocking) queue provide between producers and consumers?"
+  options={[
+    "Faster CPUs",
+    "Decoupling plus backpressure: producers block when full, so they can't outrun consumers or exhaust memory",
+    "Encryption",
+    "Automatic parallelism of a single task"
+  ]}
+  answer={1}
+  explanation="A bounded queue buffers bursts and blocks producers when full, throttling them to the consumers' rate (backpressure)."
+/>
+
+## Thread pools
+
+Spawning a new thread per task is expensive (creation cost, unbounded thread counts thrash the
+scheduler). A **thread pool** creates `W` worker threads once; each loops: take a task from a
+shared queue, run it, repeat. Submitting work just enqueues a task.
+
+```c
+// each worker:
+for (;;) {
+  task = queue_take(pool->queue);   // blocks until a task is available
+  if (task.is_shutdown) break;
+  task.fn(task.arg);                // run the work
+}
+```
+
+Benefits: bounded concurrency (exactly `W` tasks run at once), amortized thread cost, and a simple
+submit API. This is the engine behind most server request handling.
+
+<KnowledgeCheck
+  id="pc-pool"
+  type="mcq"
+  prompt="Why use a thread pool instead of spawning one thread per task?"
+  options={[
+    "Threads can't run tasks",
+    "It amortizes thread-creation cost and bounds concurrency to W workers, avoiding scheduler thrash",
+    "It makes tasks run sequentially",
+    "Pools use less code always"
+  ]}
+  answer={1}
+  explanation="A fixed worker set reuses threads (no per-task creation) and caps simultaneous work at W, avoiding the overhead and thrash of unbounded threads."
+/>
+
+## Graceful shutdown
+
+Stopping a pool correctly is subtly tricky. You must let in-flight and queued tasks finish (or
+explicitly drain), then stop workers without leaving any blocked forever in `queue_take`. Common
+approaches:
+
+- A **shutdown flag** plus `broadcast` to wake all workers; workers exit when the flag is set and
+  the queue is empty.
+- **Poison-pill** tasks: enqueue one special "stop" task per worker; each worker that sees it
+  exits. (Simple and avoids missed wakeups.)
+
+Then `join` all workers so resources are released and no thread outlives the pool.
+
+<KnowledgeCheck
+  id="pc-shutdown"
+  type="mcq"
+  prompt="What's a robust way to shut down a thread pool so no worker blocks forever?"
+  options={[
+    "Kill the threads abruptly",
+    "Set a shutdown flag and broadcast (or enqueue one poison-pill task per worker), then join all workers",
+    "Just return from main",
+    "Delete the queue"
+  ]}
+  answer={1}
+  explanation="Wake all blocked workers (broadcast on a shutdown flag, or poison pills), let them exit cleanly, and join them."
+/>
+
+## Sizing the pool
+
+How many workers?
+
+- **CPU-bound** tasks: about **one worker per core** — more just adds context-switch overhead with
+  no extra parallelism.
+- **I/O-bound** tasks: **more workers than cores** can help, since workers spend time blocked on
+  I/O and others can run meanwhile. (Or use async/event-driven I/O instead.)
+
+Oversizing wastes memory and causes scheduler thrash; undersizing leaves cores idle.
+
+<KnowledgeCheck
+  id="pc-size"
+  type="mcq"
+  prompt="For CPU-bound work, roughly how many worker threads should a pool have?"
+  options={[
+    "As many as possible",
+    "About one per CPU core",
+    "Exactly one",
+    "One per task"
+  ]}
+  answer={1}
+  explanation="CPU-bound work saturates cores; ~one worker per core maximizes parallelism without adding pointless context switches."
+/>
+
+## Recap
+
+- Producer/consumer via a bounded queue decouples rates and gives backpressure.
+- A thread pool runs `W` reusable workers pulling tasks from a shared queue — bounded concurrency,
+  amortized cost.
+- Shut down by waking all workers (flag+broadcast or poison pills) and joining them.
+- Size ~1 worker/core for CPU-bound work; more for I/O-bound.
+
+## Practice
+
+Implement the **Thread Pool** below: submit tasks, run them across workers, and shut down cleanly
+(graded for "every task runs exactly once" and clean teardown).
+
+Next: **Deadlock and Avoidance** — when locking goes wrong.

@@ -1,0 +1,42 @@
+The flagship. Implement a **lock-free multi-producer / single-consumer (MPSC) queue** — the
+canonical hard systems-interview problem. Many threads enqueue concurrently with **no locks**;
+exactly one thread dequeues. You'll build the well-known **Vyukov intrusive MPSC** algorithm.
+
+## Your task
+
+In `mpsc.c`, implement `mpsc_enqueue` and `mpsc_dequeue` (`mpsc_init` is provided). Nodes are
+intrusive: the caller sets `n->value` and hands you the node.
+
+```c
+void          mpsc_enqueue(mpsc_t *q, mpsc_node_t *n);  // multi-producer
+mpsc_node_t  *mpsc_dequeue(mpsc_t *q);                  // single-consumer; NULL if none ready
+```
+
+## The algorithm
+
+**Enqueue** (any number of producers):
+1. `n->next = NULL` (relaxed).
+2. `prev = atomic_exchange(&q->head, n, memory_order_acq_rel)` — atomically make `n` the new head
+   and grab the previous head.
+3. `prev->next = n` (release) — link the predecessor to `n`, publishing it.
+
+**Dequeue** (one consumer only):
+- `tail = q->tail; next = atomic_load(&tail->next, acquire);`
+- if `next != NULL`: set `q->tail = next`, move the value (`tail->value = next->value`), and
+  **return `tail`** (it carries the value); otherwise return `NULL`.
+
+## Why the orderings matter
+
+The `acq_rel` exchange plus the `release` store on `prev->next`, paired with the consumer's
+`acquire` load of `tail->next`, establish the happens-before edge that makes each value visible to
+the consumer. Get these wrong and ThreadSanitizer will flag a race (and values may be missed).
+
+## Notes
+
+- This is **single-consumer**: never call `mpsc_dequeue` from two threads. That restriction is
+  exactly what makes a correct lock-free queue tractable (no consumer-side ABA/reclamation race).
+- `mpsc_dequeue` may transiently return `NULL` even when more items are coming (a producer mid-link);
+  the consumer simply retries.
+
+Graded by a multi-producer stress test under **ThreadSanitizer** across several seeds. Passing this
+means you've genuinely mastered concurrency.

@@ -1,0 +1,26 @@
+Implement a **thread pool** — a fixed set of worker threads pulling tasks from a shared queue.
+This is one of the most-asked concurrency interview problems. The worker loop and `tp_init` are
+provided; you implement **`tp_submit`** and **`tp_shutdown`**.
+
+## Your task
+
+In `threadpool.c`, implement:
+
+```c
+void tp_submit(pool_t *p, void (*fn)(void *), void *arg);  // enqueue a task
+void tp_shutdown(pool_t *p);                               // drain, stop, join
+```
+
+Grading submits M tasks (each bumps a shared atomic counter), then calls `tp_shutdown`; after it
+returns, **exactly M** tasks must have run, with no hang and no leaks.
+
+## Hints (no spoilers)
+
+- `tp_submit`: lock; `while (count == cap) pthread_cond_wait(&has_space, &m);` enqueue at `tail`
+  (`tail = (tail+1) % cap`), `count++`, `pthread_cond_signal(&has_work)`, unlock.
+- `tp_shutdown`: lock; set `shutdown = 1`; `pthread_cond_broadcast(&has_work)` (wake all idle
+  workers); unlock; `pthread_join` every worker; then free the task buffer. Because workers drain
+  the queue before exiting and `join` waits for them, all tasks complete before `tp_shutdown`
+  returns.
+
+Use **Submit** to run the tests (a deadlock or missed task shows up as a timeout or wrong count).

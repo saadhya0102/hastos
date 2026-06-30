@@ -1,0 +1,28 @@
+Implement a **spinlock** from C11 atomics — the primitive that makes a critical section mutually
+exclusive by busy-waiting. This is graded by a multi-threaded stress test under ThreadSanitizer:
+many threads increment a shared (non-atomic) counter under your lock, and the total must be exact
+with no data race.
+
+## Your task
+
+In `spinlock.c`, implement the functions in `spinlock.h`:
+
+```c
+void spin_init(spinlock_t *s);    // unlocked
+void spin_lock(spinlock_t *s);    // acquire (busy-wait)
+void spin_unlock(spinlock_t *s);  // release
+```
+
+Use **only atomics** (no `pthread_mutex`). The lock must provide genuine mutual exclusion.
+
+## Hints (no spoilers)
+
+- Acquire by atomically changing `locked` from 0 to 1. Either:
+  - `atomic_exchange(&s->locked, 1)` in a loop until it returns 0 (the old value), or
+  - a CAS loop: `int expected = 0; while (!atomic_compare_exchange_weak(&s->locked, &expected, 1)) expected = 0;`
+- Use **acquire** ordering on lock and **release** ordering on unlock so the critical section's
+  memory effects are correctly published (this is what keeps ThreadSanitizer happy and your data
+  consistent).
+
+Use **Submit** to run the concurrent stress test. A racy or non-exclusive lock will produce a wrong
+total and/or a TSan race report.

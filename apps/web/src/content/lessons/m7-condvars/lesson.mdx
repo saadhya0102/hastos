@@ -1,0 +1,167 @@
+# Condition Variables and Semaphores
+
+Locks provide *exclusion*, but threads often need to **wait for a condition** — "wait until the
+queue is non-empty," "until there's room." Busy-waiting (spinning on a predicate) wastes CPU. The
+right tools are **condition variables** and **semaphores**, which let a thread sleep until another
+thread signals that something changed.
+
+## The problem: waiting efficiently
+
+Consider a consumer that needs an item from a shared buffer. Spinning is wasteful:
+
+```c
+while (count == 0) { /* spin, burning CPU */ }   // BAD
+```
+
+We want the consumer to **sleep** until a producer adds an item, then wake. That's exactly what a
+condition variable provides.
+
+## Condition variables
+
+A **condition variable (CV)** is always used **with a mutex** that protects the shared state. Three
+operations:
+
+- `pthread_cond_wait(&cv, &mutex)` — atomically **releases the mutex and sleeps**; on wakeup,
+  **re-acquires the mutex** before returning.
+- `pthread_cond_signal(&cv)` — wake **one** waiter.
+- `pthread_cond_broadcast(&cv)` — wake **all** waiters.
+
+The canonical pattern — **always wait in a `while` loop checking the predicate**:
+
+```c
+pthread_mutex_lock(&m);
+while (count == 0)                 // re-check predicate after waking
+  pthread_cond_wait(&not_empty, &m);  // sleeps, releasing m; reacquires on wake
+// here: count > 0 and we hold m
+take_one_item();
+pthread_mutex_unlock(&m);
+```
+
+<KnowledgeCheck
+  id="cv-wait"
+  type="mcq"
+  prompt="What does pthread_cond_wait do atomically?"
+  options={[
+    "Spins until signaled",
+    "Releases the mutex and sleeps; on wakeup re-acquires the mutex before returning",
+    "Acquires a second mutex",
+    "Nothing; it just returns"
+  ]}
+  answer={1}
+  explanation="cond_wait atomically unlocks the mutex and blocks, then re-locks the mutex upon being woken — closing the race between checking and sleeping."
+/>
+
+## Why a while loop, not an if
+
+Two reasons you must re-check the predicate after waking:
+
+- **Spurious wakeups** — `cond_wait` may return *without* a corresponding signal (allowed by the
+  spec). If you used `if`, you'd proceed as though the condition held when it might not.
+- **Lost/stolen wakeups** — between being signaled and re-acquiring the mutex, another thread may
+  grab the item first, so the condition is false again.
+
+Using `while` re-verifies the predicate and re-sleeps if needed. This is the **single most
+important condition-variable rule**.
+
+<KnowledgeCheck
+  id="cv-while"
+  type="mcq"
+  prompt="Why must you wait on a condition variable inside a while loop (not an if)?"
+  options={[
+    "For speed",
+    "To re-check the predicate after waking, guarding against spurious wakeups and another thread invalidating the condition",
+    "Because if statements don't compile",
+    "It is optional"
+  ]}
+  answer={1}
+  explanation="Spurious wakeups and races mean the predicate may be false on wake; a while loop re-checks and re-sleeps as needed."
+/>
+
+## The lost-wakeup hazard
+
+If you **signal without holding the relevant state under the mutex**, a signal can arrive *before*
+the waiter is waiting and be missed entirely — a **lost wakeup** that hangs the waiter forever. The
+fix is the discipline above: modify the shared state and signal **while holding the mutex**, and
+have waiters check the predicate under the same mutex.
+
+```c
+// producer:
+pthread_mutex_lock(&m);
+count++;                          // change state under the lock
+pthread_cond_signal(&not_empty);  // signal under the lock
+pthread_mutex_unlock(&m);
+```
+
+<KnowledgeCheck
+  id="cv-lost"
+  type="mcq"
+  prompt="What is a lost wakeup?"
+  options={[
+    "A thread that wakes too early",
+    "A signal sent before the waiter is actually waiting, so it's missed and the waiter sleeps forever",
+    "A thread that never started",
+    "A duplicated signal"
+  ]}
+  answer={1}
+  explanation="If state changes and the signal happens before the consumer waits (state checked outside the lock), the wakeup is missed; protect state+signal under the mutex and loop on the predicate."
+/>
+
+## Semaphores
+
+A **semaphore** is a counter with two atomic operations:
+
+- `sem_wait` (P / down) — decrement; if the value would go negative, **block** until it's positive.
+- `sem_post` (V / up) — increment; wake a blocked waiter if any.
+
+Semaphores elegantly express **counting** resources. A bounded buffer uses two:
+
+- `empty` initialized to N (number of free slots) — producers `sem_wait(empty)` before adding.
+- `full` initialized to 0 (number of items) — consumers `sem_wait(full)` before removing.
+
+Plus a mutex for the buffer indices. This is the classic **producer-consumer** solution.
+
+<KnowledgeCheck
+  id="cv-sem"
+  type="mcq"
+  prompt="In a bounded buffer, what does a semaphore initialized to N (the capacity) represent?"
+  options={[
+    "The number of items currently stored",
+    "The number of free slots; producers wait on it before inserting",
+    "The number of threads",
+    "The mutex"
+  ]}
+  answer={1}
+  explanation="An 'empty' semaphore counts free slots (start = capacity); producers down it before adding, blocking when the buffer is full."
+/>
+
+## Bounded buffer with CVs
+
+With condition variables, a bounded queue uses one mutex and two CVs (`not_full`, `not_empty`):
+
+```c
+// enqueue:
+lock(m);
+while (count == cap) cond_wait(&not_full, &m);   // wait for space
+buf[tail] = x; tail = (tail+1) % cap; count++;
+cond_signal(&not_empty);                          // a consumer may proceed
+unlock(m);
+```
+
+The dequeue mirror waits on `not_empty` and signals `not_full`. This is exactly the **blocking
+bounded queue** you'll implement.
+
+## Recap
+
+- Condition variables let a thread sleep until a predicate holds, always paired with a mutex.
+- `cond_wait` atomically releases the mutex and sleeps, re-acquiring on wake — **always loop** on
+  the predicate (spurious + lost wakeups).
+- Change state and signal **under the mutex** to avoid lost wakeups.
+- Semaphores count resources; a bounded buffer uses `empty`/`full` semaphores (or two CVs) plus a
+  mutex.
+
+## Practice
+
+Implement the **Blocking Bounded Queue** below using a mutex and condition variables — graded with
+concurrent producers and consumers.
+
+Next: **Producer/Consumer and Thread Pools** — scaling this pattern to a work system.

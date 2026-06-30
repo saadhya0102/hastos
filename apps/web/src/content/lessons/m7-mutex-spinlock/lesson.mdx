@@ -1,0 +1,155 @@
+# Mutexes and Spinlocks
+
+The standard cure for a data race is **mutual exclusion**: ensure only one thread at a time
+executes the code that touches shared state. The region needing protection is the **critical
+section**, and the tool that guards it is a **lock**. There are two flavors — blocking **mutexes**
+and busy-waiting **spinlocks** — and knowing when to use each is core systems judgment.
+
+## Critical sections and mutual exclusion
+
+A **critical section** is a span of code that must not run concurrently in more than one thread
+(e.g., the `counter++` from last lesson). A lock enforces that: acquire before the section,
+release after. While one thread holds the lock, others wait.
+
+```c
+pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
+void *inc(void *_) {
+  for (int i = 0; i < 1000000; i++) {
+    pthread_mutex_lock(&m);     // enter critical section
+    counter++;                  // protected
+    pthread_mutex_unlock(&m);   // leave
+  }
+  return NULL;
+}
+```
+
+Now no two threads run `counter++` simultaneously, so no updates are lost.
+
+<KnowledgeCheck
+  id="ms-cs"
+  type="mcq"
+  prompt="What is a critical section?"
+  options={[
+    "Code that runs fastest",
+    "A region that must not execute concurrently in more than one thread (it touches shared state)",
+    "The main() function",
+    "Code with no variables"
+  ]}
+  answer={1}
+  explanation="A critical section accesses shared state and must be mutually exclusive — only one thread inside at a time."
+/>
+
+## Mutexes (blocking locks)
+
+A **mutex** is provided by the OS/runtime. If a thread tries to lock an already-held mutex, it
+**blocks** — the scheduler puts it to sleep and runs other threads, waking it when the lock frees.
+This wastes no CPU while waiting, which is ideal when the critical section may be held a while.
+
+## Spinlocks (busy-waiting locks)
+
+A **spinlock** instead **spins** — loops, repeatedly trying to acquire — until it succeeds. It
+burns CPU while waiting but avoids the cost of sleeping/waking. You build one from an **atomic**
+operation. The simplest is **test-and-set** (atomic exchange):
+
+```c
+#include <stdatomic.h>
+typedef struct { atomic_flag held; } spinlock_t;
+
+void spin_lock(spinlock_t *s) {
+  while (atomic_flag_test_and_set_explicit(&s->held, memory_order_acquire)) {
+    /* spin: keep trying until we observe it was previously clear */
+  }
+}
+void spin_unlock(spinlock_t *s) {
+  atomic_flag_clear_explicit(&s->held, memory_order_release);
+}
+```
+
+`test_and_set` atomically sets the flag and returns its **previous** value. If it was already set
+(another holder), the result is true and we keep spinning; when it was clear, we just set it — we
+hold the lock.
+
+<KnowledgeCheck
+  id="ms-tas"
+  type="mcq"
+  prompt="How does an atomic test-and-set implement lock acquisition?"
+  options={[
+    "It reads the flag, then writes it (two steps)",
+    "It atomically sets the flag and returns the previous value; if the previous value was 'clear', you acquired the lock",
+    "It sleeps the thread",
+    "It disables interrupts"
+  ]}
+  answer={1}
+  explanation="Test-and-set sets the flag and returns its old value indivisibly; observing 'previously clear' means you won the lock."
+/>
+
+## CAS: the more general primitive
+
+**Compare-and-swap (CAS)** is the workhorse atomic: *if* a location equals an expected value,
+replace it with a new value — atomically — returning whether it succeeded. A spinlock via CAS:
+
+```c
+atomic_int lock = 0;
+void cas_lock(atomic_int *l) {
+  int expected = 0;
+  while (!atomic_compare_exchange_weak(l, &expected, 1))
+    expected = 0;   // CAS writes the actual value into expected on failure; reset it
+}
+```
+
+CAS underlies not just locks but all **lock-free** data structures (later). It's the single most
+important atomic to understand.
+
+<KnowledgeCheck
+  id="ms-cas"
+  type="mcq"
+  prompt="What does compare-and-swap (CAS) do?"
+  options={[
+    "Always writes a new value",
+    "Atomically writes a new value only if the location currently equals an expected value, reporting success",
+    "Swaps two variables",
+    "Locks the whole memory bus forever"
+  ]}
+  answer={1}
+  explanation="CAS conditionally and atomically updates a location if it matches the expected value — the basis of locks and lock-free algorithms."
+/>
+
+## Spin or block? The trade-off
+
+- **Spinlocks** win when critical sections are **very short** and contention is **low**: spinning
+  a few cycles is cheaper than the overhead of sleeping and waking (a context switch costs
+  microseconds). Common in kernels for tiny critical sections.
+- **Mutexes** win when sections can be **long** or contention is **high**: blocking frees the CPU
+  for useful work instead of burning it in a spin loop.
+- **Never spin on a single core for a lock held by a descheduled thread** — you'd spin uselessly
+  until the scheduler runs the holder. And add **backoff** (e.g., `pause` instruction) to reduce
+  cache-coherence traffic while spinning.
+
+<KnowledgeCheck
+  id="ms-choice"
+  type="mcq"
+  prompt="When is a spinlock preferable to a blocking mutex?"
+  options={[
+    "When the critical section is long",
+    "When critical sections are very short and contention is low, so spinning beats the cost of sleeping/waking",
+    "Always",
+    "When you have only one thread"
+  ]}
+  answer={1}
+  explanation="Spinning avoids context-switch overhead and is best for tiny, low-contention critical sections; long/contended sections favor blocking mutexes."
+/>
+
+## Recap
+
+- A lock enforces mutual exclusion over a critical section: acquire, do work, release.
+- Mutexes block (sleep) while waiting; spinlocks busy-wait.
+- Build a spinlock from atomic **test-and-set** or **CAS**; CAS is the general primitive behind
+  locks and lock-free code.
+- Spin for short, low-contention sections; block for long or contended ones; add backoff.
+
+## Practice
+
+Implement the **Spinlock** problem below using C11 atomics — graded by a multi-threaded stress
+test under ThreadSanitizer for correctness and race-freedom.
+
+Next: **Condition Variables and Semaphores** — waiting for conditions, not just exclusion.
