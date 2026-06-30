@@ -1,0 +1,23 @@
+Implement a **ticket lock** — a *fair* spinlock. Unlike a test-and-set lock (where any waiter
+might win), a ticket lock serves threads in **FIFO order**, like a deli counter: take a number,
+wait until it's being served.
+
+## Your task
+
+In `ticket.c`, implement (init provided):
+
+```c
+void ticket_lock(ticket_t *t);
+void ticket_unlock(ticket_t *t);
+```
+
+Two atomic counters: `next` (the ticket dispenser) and `serving` (the number currently allowed in).
+
+## Hints (no spoilers)
+
+- `ticket_lock`: `unsigned my = atomic_fetch_add(&t->next, 1);` then spin
+  `while (atomic_load_explicit(&t->serving, memory_order_acquire) != my) { }`.
+- `ticket_unlock`: increment `serving` (release ordering) so ticket `my+1` proceeds.
+
+Graded under ThreadSanitizer with concurrent threads incrementing a shared counter under the lock —
+the total must be exact with no race.

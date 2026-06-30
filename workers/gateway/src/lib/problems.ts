@@ -835,6 +835,162 @@ int main(void) {
 #include "impl.c"
 `;
 
+const ACOUNTER_HEADER = `#ifndef ACOUNTER_H
+#define ACOUNTER_H
+#include <stdatomic.h>
+typedef struct { atomic_long v; } counter_t;
+void counter_init(counter_t *c);
+void counter_inc(counter_t *c);
+long counter_get(counter_t *c);
+#endif
+`;
+
+const ACOUNTER_DRIVER = `#include "acounter.h"
+#include <stdio.h>
+#include <pthread.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+static counter_t g_c;
+static int g_iters;
+static void *ac_worker(void *u) { (void)u; for (int i = 0; i < g_iters; i++) counter_inc(&g_c); return NULL; }
+static long ac_run(int n, int iters) {
+  counter_init(&g_c); g_iters = iters;
+  pthread_t t[16];
+  for (int i = 0; i < n; i++) pthread_create(&t[i], NULL, ac_worker, NULL);
+  for (int i = 0; i < n; i++) pthread_join(t[i], NULL);
+  return counter_get(&g_c);
+}
+int main(void) {
+  CHECK("single", ac_run(1, 1000) == 1000, "1x1000 should total 1000");
+  CHECK("two_threads", ac_run(2, 50000) == 100000, "2x50000 should total 100000");
+  CHECK("four_threads", ac_run(4, 50000) == 200000, "4x50000 should total 200000");
+  CHECK("eight_threads", ac_run(8, 20000) == 160000, "8x20000 should total 160000");
+  { counter_init(&g_c); for (int i = 0; i < 5; i++) counter_inc(&g_c);
+    CHECK("get_value", counter_get(&g_c) == 5, "get should return 5 after 5 increments"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const TICKET_HEADER = `#ifndef TICKET_H
+#define TICKET_H
+#include <stdatomic.h>
+typedef struct { atomic_uint next; atomic_uint serving; } ticket_t;
+void ticket_init(ticket_t *t);
+void ticket_lock(ticket_t *t);
+void ticket_unlock(ticket_t *t);
+#endif
+`;
+
+const TICKET_DRIVER = `#include "ticket.h"
+#include <stdio.h>
+#include <pthread.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+static ticket_t g_lock;
+static long g_counter;
+static int g_iters;
+static void *tk_worker(void *u) { (void)u;
+  for (int i = 0; i < g_iters; i++) { ticket_lock(&g_lock); g_counter++; ticket_unlock(&g_lock); }
+  return NULL;
+}
+static long tk_run(int n, int iters) {
+  ticket_init(&g_lock); g_counter = 0; g_iters = iters;
+  pthread_t t[16];
+  for (int i = 0; i < n; i++) pthread_create(&t[i], NULL, tk_worker, NULL);
+  for (int i = 0; i < n; i++) pthread_join(t[i], NULL);
+  return g_counter;
+}
+int main(void) {
+  CHECK("single", tk_run(1, 1000) == 1000, "1x1000 should total 1000");
+  CHECK("two_threads", tk_run(2, 50000) == 100000, "2x50000 should total 100000");
+  CHECK("four_threads", tk_run(4, 50000) == 200000, "4x50000 should total 200000");
+  CHECK("high_contention", tk_run(8, 20000) == 160000, "8x20000 should total 160000");
+  CHECK("reacquire", tk_run(1, 3) == 3, "repeated lock/unlock should work");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
+const TSTACK_HEADER = `#ifndef TSTACK_H
+#define TSTACK_H
+#include <stdatomic.h>
+typedef struct ts_node { struct ts_node *next; long value; } ts_node_t;
+typedef struct { _Atomic(ts_node_t *) head; } tstack_t;
+void ts_init(tstack_t *s);
+void ts_push(tstack_t *s, ts_node_t *n);
+ts_node_t *ts_pop(tstack_t *s);
+#endif
+`;
+
+const TSTACK_DRIVER = `#include "tstack.h"
+#include <stdio.h>
+#include <pthread.h>
+#include <stdlib.h>
+#include <stdatomic.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+static tstack_t g_s;
+static atomic_long g_sum;
+typedef struct { int from, to; } rng_t;
+static void *st_pusher(void *a) { rng_t *r = a;
+  for (int v = r->from; v < r->to; v++) { ts_node_t *n = malloc(sizeof(ts_node_t)); n->value = v; ts_push(&g_s, n); }
+  return NULL;
+}
+static void *st_popper(void *a) { int k = *(int *)a;
+  for (int i = 0; i < k; i++) { ts_node_t *n; do { n = ts_pop(&g_s); } while (!n); atomic_fetch_add(&g_sum, n->value); }
+  return NULL;
+}
+static long st_run(int pushers, int per, int poppers) {
+  ts_init(&g_s); atomic_store(&g_sum, 0);
+  int total = pushers * per;
+  pthread_t pt[16], ct[16]; rng_t pa[16];
+  for (int i = 0; i < pushers; i++) { pa[i].from = i * per; pa[i].to = (i + 1) * per; pthread_create(&pt[i], NULL, st_pusher, &pa[i]); }
+  for (int i = 0; i < pushers; i++) pthread_join(pt[i], NULL);
+  int per_pop = total / poppers;
+  for (int i = 0; i < poppers; i++) pthread_create(&ct[i], NULL, st_popper, &per_pop);
+  for (int i = 0; i < poppers; i++) pthread_join(ct[i], NULL);
+  return atomic_load(&g_sum);
+}
+static long expect(int total) { return (long)total * (total - 1) / 2; }
+
+int main(void) {
+  { ts_init(&g_s); for (int v = 0; v < 10; v++) { ts_node_t *n = malloc(sizeof(ts_node_t)); n->value = v; ts_push(&g_s, n); }
+    long sum = 0; int cnt = 0; ts_node_t *n; while ((n = ts_pop(&g_s))) { sum += n->value; cnt++; }
+    CHECK("single", sum == 45 && cnt == 10, "push 0..9 then drain should sum 45 over 10 nodes"); }
+  CHECK("concurrent_push", st_run(4, 1000, 1) == expect(4000), "4 pushers then drain: sum mismatch");
+  CHECK("concurrent_pop", st_run(1, 4000, 4) == expect(4000), "4 poppers draining 4000: sum mismatch");
+  CHECK("push_pop_sum", st_run(4, 1000, 4) == expect(4000), "concurrent push then pop: sum mismatch");
+  CHECK("stress", st_run(8, 5000, 8) == expect(40000), "8x5000 push/pop: sum mismatch");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -1212,6 +1368,66 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       mpsc_two: "hidden",
       mpsc_four: "hidden",
       per_producer_fifo: "hidden",
+      stress: "hidden",
+    },
+  },
+
+  "m7-p-atomic-counter": {
+    id: "m7-p-atomic-counter",
+    languageId: 50,
+    header: { name: "acounter.h", content: ACOUNTER_HEADER },
+    driver: ACOUNTER_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "acounter.c",
+    compilerOptions: "-std=c11 -O1 -g -pthread -fsanitize=thread",
+    cpuTimeLimit: 6,
+    wallTimeLimit: 15,
+    memoryLimitKb: 262144,
+    testVisibility: {
+      single: "sample",
+      two_threads: "hidden",
+      four_threads: "hidden",
+      eight_threads: "hidden",
+      get_value: "hidden",
+    },
+  },
+
+  "m7-p-ticket-lock": {
+    id: "m7-p-ticket-lock",
+    languageId: 50,
+    header: { name: "ticket.h", content: TICKET_HEADER },
+    driver: TICKET_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "ticket.c",
+    compilerOptions: "-std=c11 -O1 -g -pthread -fsanitize=thread",
+    cpuTimeLimit: 6,
+    wallTimeLimit: 15,
+    memoryLimitKb: 262144,
+    testVisibility: {
+      single: "sample",
+      two_threads: "hidden",
+      four_threads: "hidden",
+      high_contention: "hidden",
+      reacquire: "hidden",
+    },
+  },
+
+  "m7-p-treiber-stack": {
+    id: "m7-p-treiber-stack",
+    languageId: 50,
+    header: { name: "tstack.h", content: TSTACK_HEADER },
+    driver: TSTACK_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "tstack.c",
+    compilerOptions: "-std=c11 -O1 -g -pthread -fsanitize=thread",
+    cpuTimeLimit: 8,
+    wallTimeLimit: 18,
+    memoryLimitKb: 524288,
+    testVisibility: {
+      single: "sample",
+      concurrent_push: "hidden",
+      concurrent_pop: "hidden",
+      push_pop_sum: "hidden",
       stress: "hidden",
     },
   },

@@ -1,0 +1,20 @@
+Implement a thread-safe **atomic counter** — the simplest concurrency primitive, and the warm-up
+for everything else in this module. Many threads increment it at once; the total must be exact.
+
+## Your task
+
+In `acounter.c`, implement (init is provided):
+
+```c
+void counter_inc(counter_t *c);   // atomically add 1
+long counter_get(counter_t *c);   // atomically read
+```
+
+## Hints (no spoilers)
+
+- A plain `c->v++` is load-add-store and races (lost updates). Use `atomic_fetch_add(&c->v, 1)`,
+  which is a single indivisible read-modify-write.
+- Read with `atomic_load(&c->v)`.
+
+Graded under ThreadSanitizer with many concurrent incrementers — a non-atomic implementation will
+produce a wrong total and/or a TSan race report.

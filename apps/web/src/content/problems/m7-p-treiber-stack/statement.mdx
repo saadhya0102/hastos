@@ -1,0 +1,24 @@
+Implement the **Treiber stack** — the classic lock-free stack built from a single CAS on the head
+pointer. Multiple producers and consumers operate concurrently with no locks.
+
+## Your task
+
+In `tstack.c`, implement (init provided):
+
+```c
+void       ts_push(tstack_t *s, ts_node_t *n);  // n->value already set
+ts_node_t *ts_pop(tstack_t *s);                 // NULL if empty
+```
+
+## Hints (no spoilers)
+
+- **push**: `do { n->next = atomic_load(&s->head); } while (!atomic_compare_exchange_weak(&s->head, &n->next, n));`
+- **pop**: load `head`; if `NULL`, return `NULL`; otherwise CAS `head` from the observed node to
+  `node->next`, retrying on failure; return the node you removed.
+- Use acquire/release orderings appropriately so the consumer sees the producer's writes.
+
+Graded under ThreadSanitizer with concurrent pushes and pops; every value must come out exactly
+once with no race.
+
+> Note: the grader doesn't free popped nodes, so the **ABA problem** (which needs node reuse) won't
+> bite here — but the follow-ups explore how you'd defend against it in a real allocator.

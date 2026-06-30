@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import clsx from "clsx";
 import type { HintLevel, SlavaMessage, TestResultSummary } from "@hasystor/shared";
 import { slavaStream } from "@/lib/api";
 import { useSlava } from "@/lib/slava";
+import { useAuth } from "@/lib/auth";
 import { Badge, Button } from "./ui";
 
 interface ChatMessage extends SlavaMessage {
@@ -14,6 +16,7 @@ const HINTS: HintLevel[] = ["nudge", "partial", "full"];
 
 export function SlavaPanel() {
   const slava = useSlava();
+  const { user, configured } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [hint, setHint] = useState<HintLevel>("nudge");
@@ -132,6 +135,19 @@ export function SlavaPanel() {
         ))}
       </div>
 
+      {configured && !user ? (
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
+          <p className="font-medium">Sign in to use SLAVA</p>
+          <p className="text-sm text-muted">
+            SLAVA is available to signed-in learners — sign in to ask questions, get leveled hints,
+            and have it explain failing tests.
+          </p>
+          <Link to="/login" onClick={() => slava.setOpen(false)}>
+            <Button>Sign in</Button>
+          </Link>
+        </div>
+      ) : (
+        <>
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
         {messages.length === 0 && (
           <div className="mr-6 rounded-lg bg-surface2 px-3 py-2 text-sm">
@@ -192,6 +208,8 @@ export function SlavaPanel() {
           </Button>
         </div>
       </form>
+        </>
+      )}
     </aside>
   );
 }
