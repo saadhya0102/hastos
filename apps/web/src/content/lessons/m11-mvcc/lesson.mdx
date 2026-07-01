@@ -50,6 +50,48 @@ versions concurrently.
   explanation="Each transaction sees a consistent snapshot: the newest version committed as of its start, not later/uncommitted writes."
 />
 
+## Version visibility (how it's implemented)
+
+Concretely, each row version carries two stamps: the transaction that **created** it and the one that
+**deleted/superseded** it (PostgreSQL calls these `xmin`/`xmax`). A version is **visible** to a
+transaction if its creator committed before the transaction's snapshot **and** it hasn't been
+superseded by another version also visible to that snapshot. An `UPDATE` is really "mark the old
+version deleted by me + insert a new version created by me." A **delete** just stamps the version as
+removed. This is the same "newer shadows older" idea as LSM tombstones, applied per transaction.
+
+## The anomaly ladder and isolation levels
+
+Isolation levels are defined by which **anomalies** they forbid:
+
+| Level             | Dirty read | Non-repeatable read | Phantom | Write skew |
+| ----------------- | :--------: | :-----------------: | :-----: | :--------: |
+| Read Uncommitted  | possible   | possible            | possible| possible   |
+| Read Committed    | prevented  | possible            | possible| possible   |
+| Repeatable Read   | prevented  | prevented           | (SI: prevented) | possible |
+| Serializable      | prevented  | prevented           | prevented | prevented |
+
+- **Dirty read**: seeing another transaction's uncommitted write.
+- **Non-repeatable read**: re-reading a row and getting a different value (a committed update landed
+  in between).
+- **Phantom**: a re-run query returns new *rows* that matched a predicate.
+
+MVCC implements **Read Committed** by taking a **fresh snapshot per statement**, and **Repeatable
+Read / Snapshot Isolation** by taking **one snapshot per transaction**.
+
+<KnowledgeCheck
+  id="mv-levels"
+  type="mcq"
+  prompt="How does an MVCC engine typically implement Read Committed vs. Repeatable Read?"
+  options={[
+    "It locks rows in both",
+    "Read Committed takes a new snapshot per statement; Repeatable Read uses one snapshot for the whole transaction",
+    "They are identical",
+    "Repeatable Read disables MVCC"
+  ]}
+  answer={1}
+  explanation="The difference is snapshot lifetime: per-statement snapshots see others' commits between statements (read committed); a per-transaction snapshot is stable (repeatable read / SI)."
+/>
+
 ## Snapshot isolation
 
 The isolation level MVCC naturally provides is **snapshot isolation**: each transaction operates
@@ -70,6 +112,36 @@ transactions read overlapping data and make disjoint writes that together violat
   ]}
   answer={1}
   explanation="MVCC gives snapshot isolation (stable snapshots, no dirty/non-repeatable reads) but can allow write skew unless made serializable."
+/>
+
+## Write conflicts and serializability
+
+MVCC lets reads run free, but two transactions that update the **same row** must be arbitrated:
+**first-updater-wins** (or first-committer-wins) — the second one blocks and then either aborts with a
+serialization error or re-reads, preventing **lost updates**.
+
+Making MVCC fully **serializable** despite write skew has two main approaches:
+
+- **SSI (Serializable Snapshot Isolation)** — run on top of snapshot isolation but track read/write
+  **dependencies** between concurrent transactions; if a "dangerous structure" of dependencies that
+  could produce a non-serializable outcome is detected, abort one transaction. PostgreSQL's
+  `SERIALIZABLE` uses this — optimistic, no read locks.
+- **2PL (Two-Phase Locking)** — the classic pessimistic alternative: acquire locks (shared for reads,
+  exclusive for writes) and hold them until commit. Correct but readers and writers block each other
+  — exactly what MVCC set out to avoid.
+
+<KnowledgeCheck
+  id="mv-ssi"
+  type="mcq"
+  prompt="How does Serializable Snapshot Isolation (SSI) prevent write skew without read locks?"
+  options={[
+    "It locks every row it reads",
+    "It runs on snapshot isolation but tracks read/write dependencies among concurrent transactions and aborts one if a non-serializable pattern is detected",
+    "It disables concurrency",
+    "It uses a single global lock"
+  ]}
+  answer={1}
+  explanation="SSI is optimistic: it monitors dependency graphs at runtime and aborts a transaction only when the interleaving could violate serializability, keeping reads lock-free."
 />
 
 ## Garbage collection of old versions

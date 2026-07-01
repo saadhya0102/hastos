@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m11-storage",
   title: "B-Trees",
   order: 1,
-  estMinutes: 28,
+  estMinutes: 40,
   objectives: [
     "Explain B-tree structure and why high fanout keeps it shallow",
     "Trace search within and across nodes",

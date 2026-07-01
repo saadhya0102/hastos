@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m11-storage",
   title: "Key-Value Stores and Indexing",
   order: 0,
-  estMinutes: 20,
+  estMinutes: 30,
   objectives: [
     "Define the key-value model and core operations",
     "Explain why an index exists and read/write amplification",

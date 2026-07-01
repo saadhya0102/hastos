@@ -83,6 +83,62 @@ through levels — the cost paid for fast writes and good space use.
   explanation="Merging sorted runs keeps the most recent version of each key (newer overrides older), discarding obsolete and deleted entries."
 />
 
+## Levels and compaction strategies
+
+SSTables are organized into **levels**. L0 holds freshly flushed files that may have **overlapping**
+key ranges (so a read might check all of them); deeper levels L1..Ln hold **non-overlapping**,
+sorted, progressively larger runs (so a read checks at most one file per level). How compaction moves
+data between levels is a major design knob:
+
+- **Size-tiered** (Cassandra default): merge several similarly-sized SSTables into one bigger one.
+  Fewer merges → **low write amplification**, but many overlapping runs → **higher read + space
+  amplification** (old copies linger until merged).
+- **Leveled** (RocksDB/LevelDB): keep each level as one sorted, non-overlapping run of a fixed size;
+  compaction merges a file into the next level. **Low read + space amplification** (few places to
+  look), but **higher write amplification** (data is rewritten more often as it descends).
+
+<KnowledgeCheck
+  id="lsm-strategy"
+  type="mcq"
+  prompt="Compared to size-tiered compaction, leveled compaction generally has..."
+  options={[
+    "Higher write amplification but lower read/space amplification",
+    "Lower everything",
+    "Higher read amplification",
+    "No compaction at all"
+  ]}
+  answer={0}
+  explanation="Leveled keeps non-overlapping runs (few files to read, little wasted space) at the cost of rewriting data more often as it moves down levels."
+/>
+
+## The RUM conjecture
+
+You can't minimize all three of **R**ead, **U**pdate (write), and **M**emory (space) amplification at
+once — improving one tends to worsen another. B-trees pick low read amp; LSM with size-tiering picks
+low write amp; leveled LSM trades toward low read/space amp. Every storage engine is a point on this
+triangle, tuned to its workload.
+
+## Tombstones and delete latency
+
+An LSM **delete** doesn't erase anything — it writes a **tombstone** marker (a "this key is deleted"
+record) that shadows older values until compaction physically drops them. Consequences: deletes are
+as cheap as writes, but reclaiming space is **deferred** to compaction, and range scans over many
+tombstones (e.g., a queue table with heavy delete churn) can get slow until they're compacted away.
+
+<KnowledgeCheck
+  id="lsm-tombstone"
+  type="mcq"
+  prompt="What does an LSM-tree do on a delete?"
+  options={[
+    "Immediately erases the key from all SSTables",
+    "Writes a tombstone marker; the old value is physically removed later during compaction",
+    "Rewrites the whole tree",
+    "Nothing"
+  ]}
+  answer={1}
+  explanation="Deletes append a tombstone that masks older versions; space is reclaimed only when compaction merges past the tombstone."
+/>
+
 ## LSM vs. B-tree trade-offs
 
 - **LSM**: excellent write throughput (sequential), good compression/space; higher read

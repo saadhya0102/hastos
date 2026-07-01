@@ -52,6 +52,47 @@ choosing that trade-off well.
   explanation="Indexes speed up reads but must be updated on writes — the read/write cost trade-off at the heart of storage engines."
 />
 
+## The simplest real index: a hash index
+
+Before trees, consider the simplest index that actually ships (Bitcask, used by Riak): keep the
+append-only log on disk, plus an **in-memory hash map** from each key to the **byte offset** of its
+latest value in the log.
+
+```
+put(k,v):  append (k,v) to the log; hash[k] = offset_of_that_record
+get(k):    look up hash[k] -> seek to that offset -> read the value
+```
+
+`put` and `get` are both ~O(1), and durability comes for free from the append log. But the design has
+sharp limits that motivate trees:
+
+- **All keys must fit in RAM** (the hash map is in memory).
+- **No efficient range scans / ordered iteration** (a hash has no order).
+- The log grows forever, so you need **compaction**: periodically rewrite live records into new
+  **segments** and discard stale ones (an overwritten or deleted key's old records are garbage).
+
+<KnowledgeCheck
+  id="kv-hash"
+  type="mcq"
+  prompt="What is the main limitation of a Bitcask-style hash index (in-memory hash of key -> log offset)?"
+  options={[
+    "Writes are slow",
+    "All keys must fit in RAM and it can't do efficient ordered/range scans",
+    "It isn't durable",
+    "get is O(n)"
+  ]}
+  answer={1}
+  explanation="The key->offset map lives in memory (so the key set must fit in RAM), and a hash provides no ordering, so range scans aren't supported — motivating sorted structures like B-trees/LSM."
+/>
+
+## Sorted files (SSTables) fix ordering
+
+If instead we keep each on-disk segment **sorted by key** (a Sorted String Table), we gain range
+scans, a sparse in-memory index (one entry per block, not per key — so keys needn't all fit in RAM),
+and simple **merge** compaction of sorted segments. That's precisely the foundation LSM-trees build
+on, while B-trees keep the sorted data in a paged tree updated in place. Both are "keep it sorted";
+they differ in *how they absorb writes*.
+
 ## Amplification: the key metrics
 
 Storage engines are judged by three "amplifications":

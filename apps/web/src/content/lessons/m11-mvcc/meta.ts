@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m11-storage",
   title: "MVCC and Isolation",
   order: 3,
-  estMinutes: 22,
+  estMinutes: 34,
   objectives: [
     "Explain multi-version concurrency control",
     "Describe snapshot isolation",

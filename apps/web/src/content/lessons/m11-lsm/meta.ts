@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m11-storage",
   title: "LSM-Trees and Compaction",
   order: 2,
-  estMinutes: 26,
+  estMinutes: 36,
   objectives: [
     "Describe the LSM write path: memtable, flush, SSTables",
     "Explain the read path and bloom filters",

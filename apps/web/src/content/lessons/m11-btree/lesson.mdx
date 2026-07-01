@@ -86,6 +86,77 @@ guaranteeing O(log N) operations.
   explanation="Overfull nodes split, pushing the median up; cascading splits to the root keep the tree balanced and uniformly deep."
 />
 
+## B-tree vs B+ tree (what databases actually use)
+
+Textbooks say "B-tree," but nearly every database uses the **B+ tree** variant:
+
+- **All values live in the leaves.** Internal nodes hold *only keys + child pointers* (as routing
+  signposts), so they pack more keys per page → even higher fanout → shallower tree.
+- **Leaves are linked** in a sorted doubly linked list. A **range scan** (`WHERE age BETWEEN 20 AND
+  30`, or `ORDER BY`) descends once to the start key, then walks leaf-to-leaf sequentially — no
+  re-descending the tree per row.
+
+This is why B+ trees are the default on-disk index: great point lookups *and* great range/ordered
+scans.
+
+<KnowledgeCheck
+  id="bt-bplus"
+  type="mcq"
+  prompt="Why do databases prefer B+ trees (values only in leaves, leaves linked) over plain B-trees?"
+  options={[
+    "They use less memory only",
+    "Internal nodes hold only keys (higher fanout, shallower tree) and linked leaves make range/ordered scans a sequential walk",
+    "They never need splitting",
+    "They avoid disk entirely"
+  ]}
+  answer={1}
+  explanation="Keys-only internal nodes raise fanout; the linked leaf list turns range scans into a single descent plus a sequential leaf walk."
+/>
+
+## Fanout and height: a quick estimate
+
+Height determines I/O per lookup, and fanout determines height. With 16 KB pages, ~16-byte keys and
+~8-byte child pointers, an internal node holds roughly `16384 / 24 ≈ 680` children. Then:
+
+```
+height 2:  680^2      ~= 460,000 keys
+height 3:  680^3      ~= 314,000,000 keys
+height 4:  680^4      ~= 2.1 x 10^11 keys
+```
+
+So a handful of levels indexes hundreds of millions of rows — and the top levels stay cached, so a
+lookup is often just **one** actual disk read at the leaf.
+
+<KnowledgeCheck
+  id="bt-height"
+  type="numeric"
+  prompt="If a B+ tree node has fanout 100, roughly how many levels are needed to index 1,000,000 keys? (enter the integer height)"
+  answer={3}
+  explanation="100^3 = 1,000,000, so about 3 levels. Height grows as log_fanout(N), which is why high fanout keeps trees shallow."
+/>
+
+## Clustered vs secondary indexes
+
+- A **clustered index** stores the table rows *in* the B+ tree leaves in key order (e.g., InnoDB's
+  primary key). One index *is* the table.
+- A **secondary index** stores the indexed column plus a reference (the primary key or a row id) back
+  to the row; a lookup may need a second probe into the clustered index ("bookmark lookup").
+
+## Deletion and rebalancing
+
+Deletes mirror inserts. Remove the key from its leaf; if the node drops **below half full**
+(underflow), either **borrow** a key from a sibling (rotation) or **merge** with a sibling, pulling a
+separator key down from the parent — which can cascade merges up the tree, occasionally shrinking its
+height. In practice many engines defer merges (tolerate partly-empty pages) and reclaim space later,
+because deletes are often followed by inserts.
+
+## Concurrency: latch crabbing
+
+Multiple threads walk the tree at once, so engines take short page **latches** while descending using
+**crabbing**: latch the child, and once you're sure it won't split/merge (it has room), release the
+parent's latch — "crabbing" down hand-over-hand. This keeps concurrency high while preventing a
+reader from seeing a node mid-split.
+
 ## Why pages, in place
 
 B-trees are tuned for storage: node size = disk/SSD **page** size, so each node read/write is one
