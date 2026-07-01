@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m3-performance",
   title: "Latency Numbers and the Cost Model",
   order: 0,
-  estMinutes: 18,
+  estMinutes: 26,
   objectives: [
     "Internalize the relative latencies of registers, caches, DRAM, SSD, and network",
     "Use the cost model to reason about where time goes",

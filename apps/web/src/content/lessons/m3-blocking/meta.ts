@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m3-performance",
   title: "Loop Tiling (Blocking)",
   order: 3,
-  estMinutes: 22,
+  estMinutes: 30,
   objectives: [
     "Explain why naive matrix multiply thrashes the cache",
     "Apply blocking/tiling so a working set fits in cache",

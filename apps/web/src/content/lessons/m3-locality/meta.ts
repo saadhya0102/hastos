@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m3-performance",
   title: "Locality and Cache-Friendly Code",
   order: 2,
-  estMinutes: 24,
+  estMinutes: 30,
   objectives: [
     "Define temporal and spatial locality",
     "Explain why row-major traversal beats column-major for C arrays",

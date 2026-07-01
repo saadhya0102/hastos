@@ -21,6 +21,36 @@ That last point is the trap.
   explanation="Coherence is line-granular; a write anywhere in a 64-byte line invalidates other cores' copies of the whole line."
 />
 
+## How coherence works: MESI
+
+Coherence is usually implemented with a protocol like **MESI**, giving each cached line one of four
+states:
+
+- **Modified** — this core has the only copy and it's dirty (differs from memory).
+- **Exclusive** — this core has the only copy and it's clean.
+- **Shared** — multiple cores may hold clean read-only copies.
+- **Invalid** — the copy is stale/unusable.
+
+A **write** requires the line in Modified state, which means invalidating every other core's copy
+first (a "read-for-ownership"). So two cores repeatedly writing the *same line* force it to bounce:
+core 1 takes it Modified (invalidating core 2), core 2 then takes it Modified (invalidating core 1),
+over and over — the **ping-pong**. Reads shared across cores are fine (all can hold it Shared); it's
+concurrent **writes** to the same line that hurt.
+
+<KnowledgeCheck
+  id="fs-mesi"
+  type="mcq"
+  prompt="Under MESI, why do two cores repeatedly writing the same cache line cause heavy traffic?"
+  options={[
+    "Reads always invalidate lines",
+    "A write needs the line in Modified state, which invalidates all other cores' copies, so the line bounces between cores on each write",
+    "MESI disables the cache",
+    "Shared state is impossible"
+  ]}
+  answer={1}
+  explanation="Writing requires exclusive ownership (Modified); each write invalidates the other core's copy, so the line ping-pongs — the mechanism behind false sharing."
+/>
+
 ## The false-sharing scenario
 
 ```c
@@ -88,6 +118,31 @@ capacity and can *hurt* by reducing how much fits in cache.
   ]}
   answer={1}
   explanation="Separating the variables onto distinct cache lines (alignas(64) or padding) stops cross-invalidation."
+/>
+
+## True vs. false sharing, and detecting it
+
+- **False sharing**: threads touch *different* variables that share a line — fixable by padding.
+- **True sharing**: threads genuinely contend on the *same* variable — padding won't help; you need a
+  better algorithm (per-thread accumulation then combine, or a lock-free/sharded design).
+
+To find it in practice, profilers surface cache-line contention: Linux `perf c2c` (cache-to-cache)
+reports **HITM** events (a load that hit a line Modified in *another* core's cache) and points at the
+offending line and offsets. A sudden speed collapse when you add threads — with no shared logical
+state — is the classic false-sharing fingerprint.
+
+<KnowledgeCheck
+  id="fs-truevsfalse"
+  type="mcq"
+  prompt="Padding variables onto separate cache lines fixes which problem?"
+  options={[
+    "True sharing (contention on the same variable)",
+    "False sharing (independent variables that happen to share a line)",
+    "Both equally",
+    "Neither"
+  ]}
+  answer={1}
+  explanation="Padding separates independent variables (false sharing). True sharing is real contention on one variable and needs an algorithmic fix, not padding."
 />
 
 ## Where it shows up

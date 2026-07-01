@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m3-performance",
   title: "False Sharing",
   order: 4,
-  estMinutes: 18,
+  estMinutes: 26,
   objectives: [
     "Explain cache coherence at the line granularity",
     "Diagnose false sharing between threads",

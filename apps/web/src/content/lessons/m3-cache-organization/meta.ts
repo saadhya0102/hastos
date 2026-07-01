@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m3-performance",
   title: "How Caches Work",
   order: 1,
-  estMinutes: 30,
+  estMinutes: 38,
   objectives: [
     "Explain cache lines, sets, ways, tags, and valid bits",
     "Decompose an address into tag, set index, and block offset",

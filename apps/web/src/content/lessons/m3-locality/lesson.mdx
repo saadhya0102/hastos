@@ -76,6 +76,29 @@ line you already paid for."
   explanation="16 contiguous ints fill one 64-byte line, so ~1 compulsory miss covers all 16 — vs. 16 misses for column (large-stride) access."
 />
 
+## The hardware prefetcher
+
+Modern CPUs watch your access pattern and **prefetch** ahead: if you're marching through memory at a
+regular stride, the prefetcher fetches the *next* lines before you ask, hiding much of the DRAM
+latency. This is a second reason to prefer small, regular strides — a **predictable** pattern lets the
+prefetcher work; random pointer-chasing defeats it (nothing to predict). You can also issue explicit
+software hints (`__builtin_prefetch`) for irregular-but-known-ahead accesses, though it's a
+last-resort tool.
+
+<KnowledgeCheck
+  id="lo-prefetch"
+  type="mcq"
+  prompt="Why does pointer-chasing through a linked list defeat the hardware prefetcher?"
+  options={[
+    "Linked lists are too small",
+    "Each next address is data-dependent and irregular, so there's no stride pattern to predict and prefetch",
+    "Prefetchers only work on writes",
+    "Linked lists don't use memory"
+  ]}
+  answer={1}
+  explanation="The prefetcher extrapolates regular strides; a list's next-pointer is unpredictable until loaded, so the CPU can't fetch ahead — you eat the full miss each hop."
+/>
+
 ## Data layout: AoS vs. SoA
 
 How you group fields affects locality:

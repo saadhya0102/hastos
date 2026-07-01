@@ -34,6 +34,37 @@ massive *potential* reuse (each element of A and B is used n times).
   explanation="B[k][j] walks a column with stride n; each cache line yields one useful element, thrashing the cache."
 />
 
+## A cheaper first step: loop interchange
+
+Before tiling, note that just **reordering the loops** to `i-k-j` fixes B's stride:
+
+```c
+for (int i = 0; i < n; i++)
+  for (int k = 0; k < n; k++) {
+    int aik = A[i][k];                 // hoist: reused across all j
+    for (int j = 0; j < n; j++)
+      C[i][j] += aik * B[k][j];        // B[k][j] and C[i][j] now walk rows (stride 1)
+  }
+```
+
+Now the inner loop streams contiguous rows of B and C (great spatial locality), and `A[i][k]` is
+hoisted into a register. Loop interchange is often a big win on its own; tiling then adds *temporal*
+reuse on top for large matrices.
+
+<KnowledgeCheck
+  id="bl-interchange"
+  type="mcq"
+  prompt="How does reordering naive matmul from i-j-k to i-k-j help?"
+  options={[
+    "It does fewer multiplications",
+    "The inner loop then walks B and C along contiguous rows (stride 1) instead of down a column",
+    "It removes matrix A",
+    "It uses less memory"
+  ]}
+  answer={1}
+  explanation="With j innermost and k in the middle, B[k][j] and C[i][j] are accessed row-wise (stride 1), restoring spatial locality; A[i][k] is loop-invariant and hoisted."
+/>
+
 ## The idea: work on blocks that fit in cache
 
 Instead of sweeping whole rows/columns, process the matrices in small **tiles** (say `T x T`)
@@ -94,6 +125,38 @@ first, then block to keep it in cache.
   ]}
   answer={1}
   explanation="With no data reuse (each element touched once), there's nothing for the cache to keep resident; blocking can't improve it."
+/>
+
+## The roofline model
+
+The **roofline** puts arithmetic intensity on the x-axis and achievable performance (FLOP/s) on the
+y-axis. Performance is capped by two "roofs":
+
+```
+attainable = min( peak_compute,  memory_bandwidth * arithmetic_intensity )
+```
+
+- **Low intensity** → you're on the slanted memory roof: **memory-bound**, limited by bandwidth. Tiling
+  raises intensity, sliding you right toward the compute roof.
+- **High intensity** → you hit the flat **compute-bound** roof; only more FLOP/s (SIMD, more cores)
+  helps.
+
+This is why hand-tuned **BLAS** libraries (OpenBLAS, MKL) combine tiling + loop interchange + SIMD +
+register blocking to push matmul all the way to the compute roof — and why you should call a library
+for serious linear algebra rather than rolling your own.
+
+<KnowledgeCheck
+  id="bl-roofline"
+  type="mcq"
+  prompt="A kernel is memory-bound (low arithmetic intensity). According to the roofline model, what raises its performance?"
+  options={[
+    "Adding more arithmetic instructions",
+    "Increasing arithmetic intensity (more compute per byte moved), e.g., via blocking/reuse",
+    "Nothing can help",
+    "Using longer variable names"
+  ]}
+  answer={1}
+  explanation="On the memory roof you're bandwidth-limited; getting more useful work per fetched byte (higher intensity) moves you up/right toward the compute roof."
 />
 
 ## Recap

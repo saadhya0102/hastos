@@ -97,6 +97,59 @@ Much of "cache-friendly code" is really "prefetcher-friendly code."
   explanation="Predictable patterns are prefetched and stay in cache; random access stalls on full memory latency repeatedly."
 />
 
+## Not all instructions are equal
+
+Even within the CPU, instruction costs vary by ~100x, which matters in tight loops:
+
+```
+add / sub / bitwise / compare   ~1 cycle (often several per cycle, pipelined)
+multiply (integer)              ~3 cycles
+divide / modulo (integer)       ~20-40 cycles (often not pipelined)
+floating-point add/mul          ~4-5 cycles (pipelined, high throughput)
+mispredicted branch             ~15-20 cycles (pipeline flush)
+```
+
+Two practical consequences: prefer multiplies/shifts over divides in hot loops (compilers turn
+`/ constant` into multiply-by-reciprocal for you), and make branches **predictable**. A branch the
+predictor gets right is ~free; an unpredictable one (e.g., on random data) flushes the pipeline every
+time — sometimes it's faster to write **branchless** code.
+
+<KnowledgeCheck
+  id="ln-branch"
+  type="mcq"
+  prompt="Why can a data-dependent branch in a hot loop be surprisingly expensive?"
+  options={[
+    "Branches use extra memory",
+    "A mispredicted branch flushes the pipeline (~15-20 cycles), and unpredictable data causes frequent mispredicts",
+    "Branches disable the cache",
+    "The compiler removes all branches"
+  ]}
+  answer={1}
+  explanation="The CPU speculates past branches; a wrong guess discards the speculative work and refills the pipeline, costing ~15-20 cycles each time."
+/>
+
+## Back-of-the-envelope estimation
+
+The point of memorizing the ladder is fast *estimation*. Example: sum a 1 GB array of `int`s
+(sequential). That's ~256M ints in ~16M cache lines; at streaming DRAM bandwidth (~10-20 GB/s) it's
+~50-100 ms — memory-bound, so no amount of arithmetic tuning helps. Now sum a linked list of the same
+256M nodes scattered in DRAM: ~256M × ~100 ns ≈ **25 seconds**. Same "O(n) work," ~300x apart —
+predicted in seconds of napkin math from the latency numbers.
+
+<KnowledgeCheck
+  id="ln-estimate"
+  type="mcq"
+  prompt="Estimating: chasing 10 million random pointers into DRAM (~100 ns each, unprefetchable) takes roughly...?"
+  options={[
+    "~1 millisecond",
+    "~1 second",
+    "~1 microsecond",
+    "~1 minute"
+  ]}
+  answer={1}
+  explanation="10,000,000 x 100 ns = 1,000,000,000 ns = 1 second. Random pointer-chasing exposes full DRAM latency with no prefetch help."
+/>
+
 ## Recap
 
 - Latencies climb ~10–1000x per level: register → L1 → L2 → L3 → DRAM → SSD → network → disk.

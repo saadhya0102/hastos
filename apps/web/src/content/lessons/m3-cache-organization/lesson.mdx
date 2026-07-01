@@ -20,6 +20,40 @@ for free.
   explanation="Caches transfer whole lines (~64 bytes), so neighbors of the requested int are loaded too."
 />
 
+## The cache hierarchy and AMAT
+
+Real CPUs stack several caches, each bigger and slower than the last, before DRAM:
+
+```
+L1  ~32-64 KB   ~4 cycles   (per core, split I/D)
+L2  ~256KB-1MB  ~12 cycles  (per core)
+L3  ~8-64 MB    ~40 cycles  (shared across cores)
+DRAM            ~200+ cycles (~60-100 ns)
+```
+
+The payoff of this staircase is captured by **Average Memory Access Time (AMAT)**:
+
+```
+AMAT = hit_time + miss_rate * miss_penalty
+```
+
+and it composes across levels (a miss at L1 "pays" L2's AMAT as its penalty):
+
+```
+AMAT = t_L1 + m_L1 * (t_L2 + m_L2 * (t_L3 + m_L3 * t_DRAM))
+```
+
+Because the DRAM penalty is ~50x an L1 hit, even a small miss-rate improvement at L1 can dominate
+performance — the quantitative reason locality matters so much (next lesson).
+
+<KnowledgeCheck
+  id="co-amat"
+  type="numeric"
+  prompt="A cache has hit time 4 cycles, miss rate 5% (0.05), and miss penalty 200 cycles. What is the AMAT in cycles?"
+  answer={14}
+  explanation="AMAT = 4 + 0.05*200 = 4 + 10 = 14 cycles. The rare misses dominate because the penalty is large."
+/>
+
 ## Sets, ways, and the address breakdown
 
 A cache is organized as an array of **sets**, each containing some number of **ways** (line
@@ -93,6 +127,34 @@ collide in a direct-mapped cache.
   prompt="With 64-byte lines and 256 sets, how many low bits of an address are used for (offset + index) together?"
   answer={14}
   explanation="offset = 6 bits, index = 8 bits (256 sets), total 14 bits; the rest is the tag."
+/>
+
+## Write policies (at the cache level)
+
+Caches must decide what to do on writes — the same write-back/through choice you saw for the disk
+buffer cache, one level up:
+
+- **Write-back + write-allocate** (the common combo): a write updates the line in cache and marks it
+  **dirty**; on a write miss, the line is first fetched, then written. Dirty lines flush to the next
+  level on eviction. Absorbs repeated writes to the same line.
+- **Write-through + no-write-allocate**: writes go straight to the next level; write misses don't pull
+  the line in. Simpler, but more write traffic.
+
+A **dirty bit** per line tracks whether a write-back is needed on eviction — a clean line can be
+dropped for free.
+
+<KnowledgeCheck
+  id="co-writeback"
+  type="mcq"
+  prompt="In a write-back cache, what does the dirty bit indicate?"
+  options={[
+    "The line is invalid",
+    "The line has been modified and must be written to the next level before eviction",
+    "The line was recently used",
+    "The line is shared with another core"
+  ]}
+  answer={1}
+  explanation="A set dirty bit means the cached copy diverges from memory, so eviction must write it back; a clean line can simply be discarded."
 />
 
 ## The three C's of misses
