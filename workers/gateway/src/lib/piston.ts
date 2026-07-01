@@ -50,14 +50,24 @@ interface PistonExecResponse {
 let runtimeCache: { at: number; runtimes: PistonRuntime[] } | null = null;
 const RUNTIME_TTL_MS = 5 * 60 * 1000;
 
-function base(env: Env): string {
+/**
+ * Compute the Piston v2 API base from PISTON_URL, tolerating either form:
+ *   - self-hosted root:  http://localhost:2000            -> .../api/v2
+ *   - public instance:   https://emkc.org/api/v2/piston   -> used as-is
+ *   - a full endpoint:   http://host:2000/api/v2/execute  -> suffix stripped
+ * Endpoints are then `${apiBase}/execute` and `${apiBase}/runtimes`.
+ */
+function apiBase(env: Env): string {
   if (!env.PISTON_URL) throw new PistonError("Piston backend is not configured.", 503);
-  return env.PISTON_URL.replace(/\/$/, "");
+  let u = env.PISTON_URL.trim().replace(/\/+$/, "");
+  u = u.replace(/\/(execute|runtimes)$/i, "");
+  if (/\/api\/v\d+/i.test(u)) return u; // already an /api/vN[/piston] base
+  return `${u}/api/v2`;
 }
 
 async function fetchRuntimes(env: Env): Promise<PistonRuntime[]> {
   if (runtimeCache && Date.now() - runtimeCache.at < RUNTIME_TTL_MS) return runtimeCache.runtimes;
-  const res = await fetch(`${base(env)}/api/v2/runtimes`, {
+  const res = await fetch(`${apiBase(env)}/runtimes`, {
     signal: AbortSignal.timeout(8000),
   });
   if (!res.ok) throw new PistonError(`Piston runtimes error (${res.status})`, 502);
@@ -101,7 +111,7 @@ export async function runPiston(env: Env, p: PistonParams): Promise<Judge0Result
     run_memory_limit: p.memoryLimitBytes ?? -1,
   };
 
-  const res = await fetch(`${base(env)}/api/v2/execute`, {
+  const res = await fetch(`${apiBase(env)}/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -174,7 +184,7 @@ function normalize(raw: PistonExecResponse): Judge0Result {
 export async function pistonHealthy(env: Env): Promise<boolean> {
   if (!env.PISTON_URL) return false;
   try {
-    const res = await fetch(`${base(env)}/api/v2/runtimes`, { signal: AbortSignal.timeout(5000) });
+    const res = await fetch(`${apiBase(env)}/runtimes`, { signal: AbortSignal.timeout(5000) });
     return res.ok;
   } catch {
     return false;

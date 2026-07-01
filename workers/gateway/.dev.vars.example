@@ -7,11 +7,16 @@ GROQ_API_KEY=gsk_...
 # Execution backend selection: "piston" | "judge0" | "auto" (auto prefers Piston if PISTON_URL set)
 EXEC_BACKEND=auto
 
-# Piston (primary grader). Run locally with Docker, expose via Cloudflare Tunnel.
-# Local example:
+# Piston (primary grader). SELF-HOSTED — the public emkc.org API is no longer
+# free (auth token required as of 2026-02-15; keys not granted for projects like
+# this). See infra/piston/README.md. Any of these URL forms work; the adapter
+# resolves the /api/v2 path automatically:
+#
+# Self-hosted, local (works when the Worker runs locally via `wrangler dev`):
 PISTON_URL=http://localhost:2000
-# Tunnel example:
+# Self-hosted, exposed to the internet via Cloudflare Tunnel (needed in prod):
 # PISTON_URL=https://piston.yourdomain.com
+# (Only if EngineerMan issued you a key — usually not: https://emkc.org/api/v2/piston)
 
 # Judge0 (optional fallback grader — self-hosted or RapidAPI)
 # Self-hosted example:
