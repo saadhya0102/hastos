@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m0-orientation",
   title: "Using HastOS: Run, Submit, and SLAVA",
   order: 3,
-  estMinutes: 12,
+  estMinutes: 18,
   objectives: [
     "Distinguish Run (experiment) from Submit (graded against hidden tests)",
     "Read the per-test results panel and the output console",

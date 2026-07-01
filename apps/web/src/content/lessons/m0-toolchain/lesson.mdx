@@ -116,9 +116,11 @@ Two flag groups you'll use constantly:
   (aggressive). Higher levels can *expose* undefined behavior that "worked" at `-O0`.
 
 <Aside kind="note">
-HastOS compiles your submissions with sanitizers like `-fsanitize=address,undefined`. These
-instrument your program to catch out-of-bounds accesses, use-after-free, and UB at runtime —
-turning silent corruption into a clear, immediate report. Lean on them.
+When the grader supports it (a Judge0 backend), HastOS compiles submissions with sanitizers like
+`-fsanitize=address,undefined`, which instrument your program to catch out-of-bounds accesses,
+use-after-free, and UB at runtime — turning silent corruption into a clear report. The lightweight
+Piston grader can't inject those flags, so it still checks correctness via the test output; either
+way, writing UB-free code is on you.
 </Aside>
 
 <KnowledgeCheck
@@ -135,6 +137,57 @@ turning silent corruption into a clear, immediate report. Lean on them.
   explanation="Optimizers assume your program has no UB; if it does, aggressive optimization can change observable behavior."
 />
 
+## Inspecting the pipeline yourself
+
+You can stop the pipeline at any stage and look — a superpower for debugging and learning:
+
+```
+gcc -E main.c              # stop after preprocessing (see expanded macros/includes)
+gcc -S main.c              # stop after compile: emit main.s (read the assembly!)
+gcc -c main.c              # stop after assemble: emit main.o (object file)
+nm main.o                  # list symbols: T=defined text, U=undefined, t=local
+objdump -d main.o          # disassemble machine code back to assembly
+readelf -h a.out           # inspect the ELF header/segments
+```
+
+Two runtime debuggers you'll reach for constantly:
+
+- **gdb** — set breakpoints, step, inspect variables and the stack (`bt` for a backtrace on a crash).
+- **valgrind** / **AddressSanitizer** — catch memory errors (leaks, out-of-bounds, use-after-free).
+
+<KnowledgeCheck
+  id="tc-inspect"
+  type="mcq"
+  prompt="Which command stops the toolchain after the compile stage so you can read the generated x86-64 assembly?"
+  options={["gcc -E", "gcc -S", "gcc -c", "nm"]}
+  answer={1}
+  explanation="`-S` emits the .s assembly file (compile stage output); -E stops after preprocessing, -c after assembling to an object file."
+/>
+
+## Undefined vs. implementation-defined vs. unspecified
+
+Not all "it depends" is the same, and the distinction matters:
+
+- **Undefined behavior (UB)**: anything may happen (out-of-bounds, signed overflow). Never rely on it.
+- **Implementation-defined**: the implementation must pick and **document** a behavior (e.g.,
+  `sizeof(int)`, whether `char` is signed). Portable code shouldn't assume a specific choice.
+- **Unspecified**: the implementation picks but need not document or be consistent (e.g., the
+  evaluation order of function arguments).
+
+<KnowledgeCheck
+  id="tc-ub"
+  type="mcq"
+  prompt="`sizeof(long)` being 8 on one platform and 4 on another is an example of..."
+  options={[
+    "Undefined behavior",
+    "Implementation-defined behavior (the platform chooses and documents it)",
+    "A compiler bug",
+    "Unspecified behavior"
+  ]}
+  answer={1}
+  explanation="Type sizes are implementation-defined: each platform/ABI picks and documents them, so portable code must not hardcode assumptions."
+/>
+
 ## How HastOS compiles your work
 
 For a `harness`-graded problem, your editable file (say `strlen.c`) is compiled together with
@@ -142,8 +195,10 @@ a hidden **driver** that calls your function and checks results, plus the shared
 Roughly:
 
 ```
-gcc -std=c11 -O1 -g -fsanitize=address,undefined  driver.c  -o app
-# (driver.c includes your strlen.c, which includes strlen.h)
+# On a sanitizer-capable grader (Judge0):
+gcc -std=c11 -O1 -g -fsanitize=address,undefined  main.c  -o app
+# On Piston: same, minus the injected flags. main.c is the header + your code + driver
+# assembled into one translation unit.
 ./app   # prints machine-readable PASS/FAIL lines the grader parses
 ```
 

@@ -54,6 +54,41 @@ The **Output** tab (from Run) shows stdout, stderr, the exit code, and time/memo
 - "Given" files (like a header) are read-only; you edit the implementation file.
 - **Reset** restores the starter code if you want a clean slate.
 
+## Where your code runs (grader status)
+
+The top bar shows a **Grader** pill — this is where your code actually executes:
+
+- **Grader: online (green)** — a server sandbox (Piston/Judge0) compiles and runs everything: C,
+  C++, Rust, Go, x86-64 assembly, and Python, and grades submissions against the hidden harness.
+- **Grader: offline (amber)** — the server sandbox isn't reachable, so HastOS falls back to running
+  **Python in your browser** via WebAssembly. In this mode, compiled languages and graded C
+  submissions are disabled (with a note) because they need the server; Python still runs. Click the
+  pill for details and a refresh button.
+
+So if a **Run** or **Submit** button is greyed out, check the grader pill — an offline grader is the
+usual reason, not your code.
+
+<KnowledgeCheck
+  id="uh-grader"
+  type="mcq"
+  prompt="The Grader pill shows 'offline'. What can you still do?"
+  options={[
+    "Nothing works",
+    "Run Python in your browser (WASM); compiled languages and graded C submissions are disabled until the grader is back",
+    "Submit C problems as normal",
+    "Only read lessons"
+  ]}
+  answer={1}
+  explanation="Offline falls back to in-browser Python (WASM); C/C++/Rust/Go/ASM and graded submissions need the server grader."
+/>
+
+## Progress, trivia, and review
+
+- Your lesson completion, knowledge-check answers, and submission verdicts are tracked so the
+  **Dashboard** and **Review** pages can resurface weak spots.
+- Loading screens show **trivia** drawn from across the curriculum (the kind of quick-fire facts that
+  come up in interviews) — a low-effort way to keep concepts warm.
+
 ## Working with SLAVA
 
 SLAVA — the **Systems Learning Assistant for Verification and Assessment** — is docked on

@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m0-orientation",
   title: "Structs, Unions, and Alignment",
   order: 4,
-  estMinutes: 24,
+  estMinutes: 32,
   objectives: [
     "Lay out struct fields and compute size with padding",
     "Explain alignment requirements and why padding exists",

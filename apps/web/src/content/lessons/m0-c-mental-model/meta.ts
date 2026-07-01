@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m0-orientation",
   title: "The C Mental Model: Memory, Pointers, and Undefined Behavior",
   order: 1,
-  estMinutes: 35,
+  estMinutes: 42,
   objectives: [
     "Reason about memory as a flat array of bytes with addresses",
     "Use pointers confidently: address-of, dereference, and pointer arithmetic",

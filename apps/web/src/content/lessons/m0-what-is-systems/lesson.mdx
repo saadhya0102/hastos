@@ -97,6 +97,46 @@ step down is roughly 100-1000x slower. Internalizing this ordering is a systems 
   explanation="L1 (~1 ns) is fastest, DRAM (~100 ns) next, SSD (~100 us) far slower."
 />
 
+## Recurring themes you'll see everywhere
+
+Systems is less a list of facts than a handful of ideas that reappear at every layer. Spotting them
+turns "memorizing" into "recognizing":
+
+- **Caching**: keep a hot subset in faster storage (CPU caches, TLB, page cache, CDNs). Same idea,
+  many layers.
+- **Indirection**: add a level of pointers/tables to gain flexibility (virtual memory, the GOT/PLT,
+  file descriptors, vtables). "All problems can be solved by another layer of indirection."
+- **Batching & amortization**: group work to pay a fixed cost once (buffered I/O, log-structured
+  writes, amortized array growth).
+- **Locality**: things used together should live together (arrays over linked lists for scans,
+  struct packing).
+- **Mechanism vs. policy**: build a minimal correct mechanism, then plug in policies (the scheduler,
+  cache replacement, allocation strategy).
+- **Trade-off triangles**: you rarely get everything — read vs. write vs. space amplification, latency
+  vs. throughput, safety vs. control.
+
+<KnowledgeCheck
+  id="wis-themes"
+  type="mcq"
+  prompt="CPU caches, the TLB, and the OS page cache are all instances of which recurring systems idea?"
+  options={[
+    "Indirection",
+    "Caching — keeping a hot subset in faster storage",
+    "Batching",
+    "Mechanism vs. policy"
+  ]}
+  answer={1}
+  explanation="They all keep frequently-used data in a faster tier to avoid a slower one — the caching pattern, repeated at every layer."
+/>
+
+## A tiny worked example: the cost of an abstraction
+
+Consider summing a million integers stored in (a) a contiguous array vs. (b) a linked list. Both are
+O(n) "in theory," but the array streams sequentially — the prefetcher keeps L1 fed, ~1 ns per element
+— while the linked list chases pointers to random addresses, often missing all the way to DRAM
+(~100 ns each). The *same asymptotic complexity* can differ ~100x in practice. That gap — invisible
+from the application view — is exactly what systems thinking makes visible.
+
 ## What you'll build in this course
 
 This isn't a course of toy exercises. Across the modules you'll implement real systems

@@ -103,6 +103,70 @@ the IEEE-754 lesson.
   explanation="A union's size is that of its largest member (here 4 bytes); all members share the same storage."
 />
 
+## offsetof and the container_of trick
+
+Because layout is fixed and knowable, you can compute a field's byte offset with `offsetof(type,
+field)` (from `<stddef.h>`). The famous **`container_of`** macro inverts a pointer: given a pointer to
+a *field*, recover a pointer to the *enclosing struct* by subtracting the field's offset. This is how
+the Linux kernel's intrusive linked lists work — the list node is embedded in your struct, and
+`container_of` gets back to your struct from the node.
+
+```c
+#include <stddef.h>
+#define container_of(ptr, type, member) \
+  ((type *)((char *)(ptr) - offsetof(type, member)))
+
+struct task { int id; struct list_node node; };
+// given `struct list_node *n`, recover the task:
+struct task *t = container_of(n, struct task, node);
+```
+
+<KnowledgeCheck
+  id="st-offsetof"
+  type="mcq"
+  prompt="What does the container_of(ptr, type, member) macro compute?"
+  options={[
+    "The size of the struct",
+    "A pointer to the enclosing struct, given a pointer to one of its members (by subtracting the member's offset)",
+    "The alignment of a field",
+    "A copy of the struct"
+  ]}
+  answer={1}
+  explanation="It subtracts offsetof(type, member) from the member pointer to recover the address of the containing struct — the basis of intrusive data structures."
+/>
+
+## Bitfields and flexible array members
+
+- **Bitfields** pack sub-byte integer fields, handy for hardware registers and compact flags — at
+  the cost of implementation-defined ordering, so avoid them for portable wire formats.
+
+```c
+struct flags { unsigned ready : 1; unsigned mode : 2; unsigned prio : 5; }; // 1 byte of bits
+```
+
+- **Flexible array member (FAM)**: a trailing `type name[]` lets one allocation hold a header plus a
+  variable-length payload contiguously — one `malloc`, great locality.
+
+```c
+struct packet { size_t len; char data[]; };            // data[] has no size in sizeof
+struct packet *p = malloc(sizeof(*p) + n);              // header + n payload bytes, one block
+p->len = n;
+```
+
+<KnowledgeCheck
+  id="st-fam"
+  type="mcq"
+  prompt="Why use a flexible array member (e.g., `char data[];` at the end of a struct)?"
+  options={[
+    "To make the struct larger",
+    "To allocate a header plus a variable-length payload in a single contiguous block (one malloc, good locality)",
+    "To store the field names",
+    "It is required by C for all arrays"
+  ]}
+  answer={1}
+  explanation="A FAM lets you size the payload at allocation time and keep it contiguous with the header in one allocation."
+/>
+
 ## Practical uses
 
 - **Wire/file formats**: structs must often be packed (`#pragma pack` or manual layout) to match an

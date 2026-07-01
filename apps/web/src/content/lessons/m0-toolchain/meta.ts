@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m0-orientation",
   title: "From Source to a Running Program: The Toolchain",
   order: 2,
-  estMinutes: 24,
+  estMinutes: 32,
   objectives: [
     "Describe the four stages: preprocess, compile, assemble, link",
     "Explain the difference between compile-time and link-time errors",

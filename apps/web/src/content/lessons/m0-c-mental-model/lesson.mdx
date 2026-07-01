@@ -174,6 +174,75 @@ free(on_heap);
   explanation="Heap allocations persist until you free them; forgetting to free leaks memory."
 />
 
+## The process memory map
+
+Those "stack" and "heap" regions live in a larger layout the OS gives every process. From low to high
+addresses (roughly):
+
+```
+high  +---------------------+
+      |  stack   (grows down)|  locals, return addresses, saved registers
+      |         |            |
+      |         v            |
+      |    (unmapped gap)     |
+      |         ^            |
+      |         |            |
+      |  heap    (grows up)  |  malloc/free
+      +---------------------+
+      |  .bss                |  zero-initialized globals
+      |  .data               |  initialized globals
+      |  .text / .rodata     |  code + constants (read-only)
+low   +---------------------+
+```
+
+The same `int` value means different things depending on *where* it lives: a global persists for the
+whole program, a local vanishes when its function returns (returning its address is a classic
+use-after-return bug), and a heap object lives until you `free` it. You'll see this map again in the
+virtual-memory and linking modules.
+
+<KnowledgeCheck
+  id="cm-map"
+  type="mcq"
+  prompt="Why is returning the address of a local variable from a function a bug?"
+  options={[
+    "Locals can't be addressed",
+    "The local lives on the stack and is destroyed when the function returns, so the pointer dangles",
+    "It leaks memory",
+    "It's slower"
+  ]}
+  answer={1}
+  explanation="A local's storage is reclaimed on return; the returned pointer refers to memory that's no longer valid — use-after-return (UB)."
+/>
+
+## Pointers to pointers, and const
+
+Two refinements you'll use constantly:
+
+- **Pointer to pointer** (`int **pp`): a pointer whose target is itself a pointer. Needed to modify a
+  caller's pointer (e.g., a function that allocates and sets `*out`), and for arrays of strings
+  (`char **argv`).
+- **`const` placement** reads right-to-left around the `*`:
+  - `const int *p` — pointer to const int: you can't write `*p`, but can repoint `p`.
+  - `int *const p` — const pointer to int: you can write `*p`, but can't repoint `p`.
+
+```c
+void alloc_int(int **out) { *out = malloc(sizeof(int)); **out = 42; } // writes the caller's pointer
+```
+
+<KnowledgeCheck
+  id="cm-const"
+  type="mcq"
+  prompt="What does `const int *p` allow?"
+  options={[
+    "Changing *p but not p",
+    "Changing p (repointing) but not *p (the pointed-to int)",
+    "Changing neither",
+    "Changing both"
+  ]}
+  answer={1}
+  explanation="`const int *p` is a pointer to const int: the target is read-only, but the pointer itself can be reassigned."
+/>
+
 ## Undefined behavior: the dragon
 
 C trades safety for speed and control. When you break the language's rules, the standard

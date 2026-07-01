@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m0-orientation",
   title: "What Is Systems Programming?",
   order: 0,
-  estMinutes: 16,
+  estMinutes: 22,
   objectives: [
     "Define systems programming and contrast it with application programming",
     "Map the stack of abstractions from hardware up to your code",
