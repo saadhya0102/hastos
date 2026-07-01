@@ -1,0 +1,21 @@
+Implement a **counting semaphore** from a mutex and a condition variable — the primitive behind
+producer/consumer and resource pools.
+
+## Your task
+
+In `csem.c`, implement (init provided):
+
+```c
+void csem_wait(csem_t *s);   // block while count == 0, then decrement
+void csem_post(csem_t *s);   // increment and wake a waiter
+```
+
+## Hints (no spoilers)
+
+- `csem_wait`: lock the mutex; `while (s->count == 0) pthread_cond_wait(&s->c, &s->m);` then
+  `count--`; unlock. (Loop on the predicate!)
+- `csem_post`: lock; `count++`; `pthread_cond_signal(&s->c)`; unlock.
+
+Graded concurrently: as a mutex (init 1) it must give exact mutual exclusion; as a signal (init 0)
+`post` must wake blocked `wait`ers; and a `post` before a `wait` must not be lost. Get the
+change-state-and-signal-under-the-lock discipline right to avoid lost wakeups.

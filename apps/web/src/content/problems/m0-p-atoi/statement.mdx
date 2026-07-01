@@ -1,0 +1,16 @@
+Implement `my_atoi`: parse an integer from a string (optional sign + digits), stopping at the first
+non-digit.
+
+## Your task
+
+```c
+int my_atoi(const char *s);
+```
+
+## Hints (no spoilers)
+
+- Read an optional leading `'+'` or `'-'` and remember the sign.
+- While the current char is a digit (`'0'`..`'9'`), do `val = val * 10 + (c - '0')`.
+- Stop at the first non-digit; apply the sign. Assume the result fits in `int`.
+
+`my_atoi("-45")` = -45, `my_atoi("42abc")` = 42, `my_atoi("+7")` = 7. Use **Run** then **Submit**.

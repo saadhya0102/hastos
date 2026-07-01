@@ -1,0 +1,18 @@
+Implement `my_strcmp`, the standard C string comparison.
+
+## Your task
+
+```c
+int my_strcmp(const char *a, const char *b);   // <0, 0, or >0
+```
+
+Return a negative value if `a` sorts before `b`, `0` if equal, positive if after — like the library
+`strcmp`. Don't call the library `strcmp`.
+
+## Hints (no spoilers)
+
+- Advance both pointers while the bytes are equal and not `'\0'`.
+- Return the difference of the first differing bytes, compared as **`unsigned char`** (so bytes
+  above 127 order correctly). Equal strings return 0.
+
+Use **Run** then **Submit**.

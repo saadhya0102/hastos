@@ -1,0 +1,127 @@
+# Structs, Unions, and Alignment
+
+Structs group related data, but how the compiler lays them out in memory — with **alignment** and
+**padding** — surprises many people and directly affects memory usage and cache behavior. Unions
+overlay fields in the same bytes. Understanding both is essential for systems code, wire formats,
+and performance.
+
+## Struct layout and alignment
+
+Each type has an **alignment requirement**: an object of that type must start at an address that's a
+multiple of its alignment (usually equal to its size for scalars — `int` aligns to 4, `double`/
+pointers to 8). The compiler inserts **padding** bytes between fields so each field is properly
+aligned, and pads the whole struct so arrays of it stay aligned.
+
+```c
+struct A {
+  char  c;   // offset 0
+  // 3 bytes padding
+  int   x;   // offset 4 (must be 4-aligned)
+  char  d;   // offset 8
+  // 3 bytes padding (so sizeof is a multiple of 4)
+};             // sizeof(struct A) == 12, not 6!
+```
+
+The naive sum of field sizes (1+4+1 = 6) is wrong; padding makes it **12**.
+
+<KnowledgeCheck
+  id="st-size"
+  type="numeric"
+  prompt="Given `struct { char c; int x; char d; }` on x86-64, what is its sizeof in bytes?"
+  answer={12}
+  explanation="c at 0, 3 pad, int at 4, d at 8, 3 trailing pad -> 12 (a multiple of the int's 4-byte alignment)."
+/>
+
+## Why padding exists
+
+Hardware accesses aligned data more efficiently (and some architectures fault on misaligned
+access). Rather than risk slow or illegal unaligned reads, the compiler aligns every field. The
+trailing padding ensures that in an array `struct A arr[2]`, `arr[1]` is also aligned.
+
+<KnowledgeCheck
+  id="st-why"
+  type="mcq"
+  prompt="Why does the compiler insert padding into structs?"
+  options={[
+    "To waste memory",
+    "So each field meets its alignment requirement (efficient/legal hardware access)",
+    "To encrypt the data",
+    "To store the field names"
+  ]}
+  answer={1}
+  explanation="Padding aligns each field to its required boundary, which hardware needs for efficient (sometimes legal) access."
+/>
+
+## Reordering to shrink structs
+
+Because padding depends on field order, **reordering fields from largest to smallest alignment**
+often shrinks a struct:
+
+```c
+struct Bad  { char c; int x; char d; };       // 12 bytes (padding between)
+struct Good { int x; char c; char d; };        // 8 bytes (fields packed, 2 trailing pad)
+```
+
+For hot data structures, this "struct packing" reduces memory and improves cache density — a cheap,
+real optimization.
+
+<KnowledgeCheck
+  id="st-reorder"
+  type="mcq"
+  prompt="How can you often reduce a struct's size without removing fields?"
+  options={[
+    "Rename the fields",
+    "Reorder fields (largest alignment first) to minimize padding",
+    "Mark it const",
+    "Use more fields"
+  ]}
+  answer={1}
+  explanation="Ordering fields by decreasing alignment/size packs them tighter, cutting internal padding."
+/>
+
+## Unions: overlapping fields
+
+A **union** stores all its members in the **same** bytes — its size is that of its largest member,
+and only one member is valid at a time. Unions are used for tagged variants and for reinterpreting
+bytes.
+
+```c
+union U { int i; float f; unsigned char bytes[4]; };  // sizeof == 4; i, f, bytes share storage
+```
+
+Writing one member and reading another is **type punning**. In C it's often allowed (unlike C++),
+but reading an *uninitialized* or wrong-sized member is a bug, and it interacts with strict
+aliasing. For reliably reinterpreting bytes (e.g., a float's bits), prefer `memcpy` — as you saw in
+the IEEE-754 lesson.
+
+<KnowledgeCheck
+  id="st-union"
+  type="mcq"
+  prompt="What is the size of `union { int i; float f; unsigned char b[4]; }` on a typical system?"
+  options={["12 (sum of members)", "4 (the largest member)", "1", "8"]}
+  answer={1}
+  explanation="A union's size is that of its largest member (here 4 bytes); all members share the same storage."
+/>
+
+## Practical uses
+
+- **Wire/file formats**: structs must often be packed (`#pragma pack` or manual layout) to match an
+  exact byte layout — padding would corrupt the format. Better: serialize field-by-field.
+- **Tagged unions**: a struct with an enum tag + a union of variant payloads (a common pattern for
+  ASTs, messages, and sum types in C).
+- **Cache density**: shrink hot structs (reorder, use smaller int types) so more fit per cache line
+  (recall false sharing / SoA from later modules).
+
+## Recap
+
+- Fields are aligned to their type's boundary; the compiler pads between fields and at the end.
+- `sizeof` is the sum of fields **plus padding** (and a multiple of the max alignment).
+- Reorder fields (largest first) to cut padding and shrink hot structs.
+- Unions overlay members in shared bytes (size = largest member); use `memcpy` for safe bit
+  reinterpretation.
+
+## Practice
+
+Revisit **my_memset** with struct/byte layout in mind, and inspect sizes in the Playground with
+`sizeof`. Next module (M1) already dug into representation; from here the machine-level module shows
+how the CPU addresses these fields.

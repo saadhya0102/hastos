@@ -1,0 +1,23 @@
+Implement a **readers-writer lock**: any number of readers may hold it simultaneously, but a writer
+needs exclusive access. This is a classic synchronization problem (from the Little Book of
+Semaphores).
+
+## Your task
+
+In `rwlock.c`, implement the four functions (init is provided):
+
+```c
+void rw_rlock(rwlock_t *l);   void rw_runlock(rwlock_t *l);   // shared
+void rw_wlock(rwlock_t *l);   void rw_wunlock(rwlock_t *l);   // exclusive
+```
+
+## Hints (no spoilers)
+
+- `rw_rlock`: lock the mutex; `while (l->writing) pthread_cond_wait(&l->c, &l->m);` then `readers++`;
+  unlock.
+- `rw_runlock`: lock; `readers--`; if `readers == 0` broadcast; unlock.
+- `rw_wlock`: lock; `while (l->writing || l->readers > 0) wait;` set `writing = 1`; unlock.
+- `rw_wunlock`: lock; `writing = 0`; broadcast; unlock.
+
+Graded concurrently: writers increment a shared counter under the write lock; the final total must
+be exact (no two writers overlap). A broken lock loses updates or deadlocks.

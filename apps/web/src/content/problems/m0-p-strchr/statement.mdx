@@ -1,0 +1,17 @@
+Implement `my_strchr`: find the first occurrence of a character in a string.
+
+## Your task
+
+```c
+char *my_strchr(const char *s, int c);   // pointer to first (char)c, or NULL
+```
+
+## Hints (no spoilers)
+
+- Walk `s` byte by byte. Return the **address** of the first byte equal to `(char)c`.
+- Special case: searching for `'\0'` should succeed and return a pointer to the terminator (so
+  check `c` against the current byte *before* stopping at the end).
+- Return `NULL` if not found.
+
+`my_strchr("hello", 'l')` points at index 2; `my_strchr("hello", 'z')` is `NULL`. Use **Run** then
+**Submit**.

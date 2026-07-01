@@ -1395,6 +1395,179 @@ const GRAY_DRIVER = bitDriver("gray.h",
   '  CHECK("three", binary_to_gray(3u) == 2u, "gray(3) should be 2");\n' +
   '  CHECK("four", binary_to_gray(4u) == 6u, "gray(4) should be 6");');
 
+const MYSTRCMP_HEADER = `#ifndef MYSTRCMP_H
+#define MYSTRCMP_H
+int my_strcmp(const char *a, const char *b);
+#endif
+`;
+const MYSTRCMP_DRIVER = `#include "mystrcmp.h"
+#include <stdio.h>
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { g_total++; if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } } while (0)
+int main(void) {
+  CHECK("equal", my_strcmp("abc", "abc") == 0, "equal strings -> 0");
+  CHECK("less", my_strcmp("abc", "abd") < 0, "abc should be < abd");
+  CHECK("greater", my_strcmp("abd", "abc") > 0, "abd should be > abc");
+  CHECK("prefix", my_strcmp("ab", "abc") < 0, "prefix should be < longer");
+  CHECK("empty", my_strcmp("", "") == 0, "empty strings equal");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const MYMEMSET_HEADER = `#ifndef MYMEMSET_H
+#define MYMEMSET_H
+#include <stddef.h>
+void *my_memset(void *dst, int c, size_t n);
+#endif
+`;
+const MYMEMSET_DRIVER = `#include "mymemset.h"
+#include <stdio.h>
+#include <string.h>
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { g_total++; if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } } while (0)
+int main(void) {
+  { char b[6]; my_memset(b, 'A', 5); b[5] = '\\0'; CHECK("fill_char", strcmp(b, "AAAAA") == 0, "should fill 5 A's"); }
+  { char b[4] = "xyz"; void *r = my_memset(b, 'q', 3); CHECK("returns_dst", r == b && b[0] == 'q' && b[2] == 'q', "returns dst and fills"); }
+  { unsigned char b[3] = {1, 2, 3}; my_memset(b, 9, 0); CHECK("zero_n", b[0] == 1, "n=0 changes nothing"); }
+  { unsigned char b[4] = {1, 1, 1, 1}; my_memset(b, 0, 4); CHECK("fill_zero", b[0] == 0 && b[3] == 0, "fill zeros"); }
+  { unsigned char b[4] = {1, 1, 1, 1}; my_memset(b, 7, 2); CHECK("partial", b[0] == 7 && b[1] == 7 && b[2] == 1 && b[3] == 1, "only first 2 bytes"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const MYATOI_HEADER = `#ifndef MYATOI_H
+#define MYATOI_H
+int my_atoi(const char *s);
+#endif
+`;
+const MYATOI_DRIVER = `#include "myatoi.h"
+#include <stdio.h>
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { g_total++; if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } } while (0)
+int main(void) {
+  CHECK("digits", my_atoi("123") == 123, "123");
+  CHECK("negative", my_atoi("-45") == -45, "-45");
+  CHECK("plus", my_atoi("+7") == 7, "+7");
+  CHECK("trailing", my_atoi("42abc") == 42, "stop at first non-digit");
+  CHECK("zero", my_atoi("0") == 0, "0");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const MYSTRCHR_HEADER = `#ifndef MYSTRCHR_H
+#define MYSTRCHR_H
+char *my_strchr(const char *s, int c);
+#endif
+`;
+const MYSTRCHR_DRIVER = `#include "mystrchr.h"
+#include <stdio.h>
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { g_total++; if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } } while (0)
+int main(void) {
+  const char *s = "hello";
+  CHECK("found", my_strchr(s, 'l') == s + 2, "first l at index 2");
+  CHECK("first_occurrence", my_strchr(s, 'l') == s + 2, "should return the FIRST l");
+  CHECK("not_found", my_strchr(s, 'z') == 0, "absent char -> NULL");
+  CHECK("terminator", my_strchr(s, '\\0') == s + 5, "searching '\\\\0' returns the terminator");
+  CHECK("at_start", my_strchr(s, 'h') == s, "h at index 0");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const RWLOCK_HEADER = `#ifndef RWLOCK_H
+#define RWLOCK_H
+#include <pthread.h>
+typedef struct { pthread_mutex_t m; pthread_cond_t c; int readers; int writing; } rwlock_t;
+void rw_init(rwlock_t *l);
+void rw_rlock(rwlock_t *l);
+void rw_runlock(rwlock_t *l);
+void rw_wlock(rwlock_t *l);
+void rw_wunlock(rwlock_t *l);
+#endif
+`;
+const RWLOCK_DRIVER = `#include "rwlock.h"
+#include <stdio.h>
+#include <pthread.h>
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { g_total++; if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } } while (0)
+static rwlock_t g_l; static long g_counter; static int g_witers, g_riters;
+static void *writer(void *u) { (void)u; for (int i = 0; i < g_witers; i++) { rw_wlock(&g_l); g_counter++; rw_wunlock(&g_l); } return NULL; }
+static void *reader(void *u) { (void)u; volatile long sink = 0; for (int i = 0; i < g_riters; i++) { rw_rlock(&g_l); sink += g_counter; rw_runlock(&g_l); } (void)sink; return NULL; }
+static long run(int nw, int witers, int nr, int riters) {
+  rw_init(&g_l); g_counter = 0; g_witers = witers; g_riters = riters;
+  pthread_t w[16], r[16];
+  for (int i = 0; i < nw; i++) pthread_create(&w[i], 0, writer, 0);
+  for (int i = 0; i < nr; i++) pthread_create(&r[i], 0, reader, 0);
+  for (int i = 0; i < nw; i++) pthread_join(w[i], 0);
+  for (int i = 0; i < nr; i++) pthread_join(r[i], 0);
+  return g_counter;
+}
+int main(void) {
+  CHECK("one_writer", run(1, 1000, 0, 0) == 1000, "1 writer x1000");
+  CHECK("writers", run(4, 50000, 0, 0) == 200000, "4 writers x50000");
+  CHECK("readers_and_writers", run(4, 50000, 4, 10000) == 200000, "writer count exact with readers present");
+  CHECK("high_contention", run(8, 20000, 2, 5000) == 160000, "8 writers x20000");
+  CHECK("reacquire", run(1, 3, 1, 3) == 3, "basic reacquire");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const CSEM_HEADER = `#ifndef CSEM_H
+#define CSEM_H
+#include <pthread.h>
+typedef struct { pthread_mutex_t m; pthread_cond_t c; int count; } csem_t;
+void csem_init(csem_t *s, int value);
+void csem_wait(csem_t *s);
+void csem_post(csem_t *s);
+#endif
+`;
+const CSEM_DRIVER = `#include "csem.h"
+#include <stdio.h>
+#include <pthread.h>
+#include <stdatomic.h>
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { g_total++; if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } } while (0)
+static csem_t g_mux; static long g_counter; static int g_iters;
+static void *muxworker(void *u) { (void)u; for (int i = 0; i < g_iters; i++) { csem_wait(&g_mux); g_counter++; csem_post(&g_mux); } return NULL; }
+static long run_mutex(int n, int iters) {
+  csem_init(&g_mux, 1); g_counter = 0; g_iters = iters;
+  pthread_t t[16];
+  for (int i = 0; i < n; i++) pthread_create(&t[i], 0, muxworker, 0);
+  for (int i = 0; i < n; i++) pthread_join(t[i], 0);
+  return g_counter;
+}
+static csem_t g_sig; static atomic_int g_done;
+static void *waiter(void *u) { (void)u; csem_wait(&g_sig); atomic_fetch_add(&g_done, 1); return NULL; }
+static int run_signal(int n) {
+  csem_init(&g_sig, 0); atomic_store(&g_done, 0);
+  pthread_t t[16];
+  for (int i = 0; i < n; i++) pthread_create(&t[i], 0, waiter, 0);
+  for (int i = 0; i < n; i++) csem_post(&g_sig);
+  for (int i = 0; i < n; i++) pthread_join(t[i], 0);
+  return atomic_load(&g_done);
+}
+int main(void) {
+  CHECK("as_mutex", run_mutex(4, 50000) == 200000, "sem(1) as mutex should give exact count");
+  CHECK("signal_release", run_signal(4) == 4, "4 posts should release 4 waiters");
+  { csem_t s; csem_init(&s, 2); csem_wait(&s); csem_wait(&s); CHECK("permits", 1, "two permits acquired without blocking"); }
+  CHECK("high_contention", run_mutex(8, 20000) == 160000, "8x20000 as mutex");
+  { csem_t s; csem_init(&s, 0); csem_post(&s); csem_wait(&s); CHECK("post_before_wait", 1, "post then wait must not block or lose the post"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -2055,6 +2228,55 @@ const PROBLEMS: Record<string, HarnessProblem> = {
     compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
     cpuTimeLimit: 2, wallTimeLimit: 5, memoryLimitKb: 65536,
     testVisibility: { two: "sample", zero: "hidden", one: "hidden", three: "hidden", four: "hidden" },
+  },
+
+  "m0-p-strcmp": {
+    id: "m0-p-strcmp", languageId: 50,
+    header: { name: "mystrcmp.h", content: MYSTRCMP_HEADER }, driver: MYSTRCMP_DRIVER,
+    implName: "impl.c", learnerFileName: "mystrcmp.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2, wallTimeLimit: 5, memoryLimitKb: 65536,
+    testVisibility: { equal: "sample", less: "hidden", greater: "hidden", prefix: "hidden", empty: "hidden" },
+  },
+  "m0-p-memset": {
+    id: "m0-p-memset", languageId: 50,
+    header: { name: "mymemset.h", content: MYMEMSET_HEADER }, driver: MYMEMSET_DRIVER,
+    implName: "impl.c", learnerFileName: "mymemset.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2, wallTimeLimit: 5, memoryLimitKb: 65536,
+    testVisibility: { fill_char: "sample", returns_dst: "hidden", zero_n: "hidden", fill_zero: "hidden", partial: "hidden" },
+  },
+  "m0-p-atoi": {
+    id: "m0-p-atoi", languageId: 50,
+    header: { name: "myatoi.h", content: MYATOI_HEADER }, driver: MYATOI_DRIVER,
+    implName: "impl.c", learnerFileName: "myatoi.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2, wallTimeLimit: 5, memoryLimitKb: 65536,
+    testVisibility: { digits: "sample", negative: "hidden", plus: "hidden", trailing: "hidden", zero: "hidden" },
+  },
+  "m0-p-strchr": {
+    id: "m0-p-strchr", languageId: 50,
+    header: { name: "mystrchr.h", content: MYSTRCHR_HEADER }, driver: MYSTRCHR_DRIVER,
+    implName: "impl.c", learnerFileName: "mystrchr.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2, wallTimeLimit: 5, memoryLimitKb: 65536,
+    testVisibility: { found: "sample", first_occurrence: "hidden", not_found: "hidden", terminator: "hidden", at_start: "hidden" },
+  },
+  "m7-p-rwlock": {
+    id: "m7-p-rwlock", languageId: 50,
+    header: { name: "rwlock.h", content: RWLOCK_HEADER }, driver: RWLOCK_DRIVER,
+    implName: "impl.c", learnerFileName: "rwlock.c",
+    compilerOptions: "-std=c11 -O1 -g -pthread -fsanitize=address,undefined",
+    cpuTimeLimit: 6, wallTimeLimit: 15, memoryLimitKb: 262144,
+    testVisibility: { one_writer: "sample", writers: "hidden", readers_and_writers: "hidden", high_contention: "hidden", reacquire: "hidden" },
+  },
+  "m7-p-semaphore": {
+    id: "m7-p-semaphore", languageId: 50,
+    header: { name: "csem.h", content: CSEM_HEADER }, driver: CSEM_DRIVER,
+    implName: "impl.c", learnerFileName: "csem.c",
+    compilerOptions: "-std=c11 -O1 -g -pthread -fsanitize=address,undefined",
+    cpuTimeLimit: 6, wallTimeLimit: 15, memoryLimitKb: 262144,
+    testVisibility: { as_mutex: "sample", signal_release: "hidden", permits: "hidden", high_contention: "hidden", post_before_wait: "hidden" },
   },
 };
 

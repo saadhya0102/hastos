@@ -1,0 +1,15 @@
+Implement `my_memset`: fill a block of memory with a repeated byte.
+
+## Your task
+
+```c
+void *my_memset(void *dst, int c, size_t n);   // fill n bytes with (unsigned char)c, return dst
+```
+
+## Hints (no spoilers)
+
+- Cast `dst` to `unsigned char *` so you write one byte at a time.
+- Only the low 8 bits of `c` are used: store `(unsigned char)c`.
+- Loop `n` times; return `dst`. `n == 0` writes nothing.
+
+Graded with AddressSanitizer (writing past `n` is flagged). Use **Run** then **Submit**.
