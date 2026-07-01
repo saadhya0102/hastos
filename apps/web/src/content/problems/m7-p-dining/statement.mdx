@@ -1,0 +1,23 @@
+Solve the classic **Dining Philosophers** problem **without deadlock**. `n` philosophers sit in a
+circle; philosopher `id` needs `forks[id]` and `forks[(id+1)%n]`. Each must eat `eat_count` times.
+The naive "grab left then right" deadlocks; you must impose a consistent lock order.
+
+## Your task
+
+In `dining.c`, implement:
+
+```c
+void dine(int id, int n, pthread_mutex_t *forks, int eat_count, int *ate);
+```
+
+Eat `eat_count` times, doing `ate[id]++` for each meal (while holding both forks).
+
+## Hints (no spoilers)
+
+- The deadlock comes from **circular wait**: if everyone grabs their left fork first, all can hold
+  one and wait forever for the other.
+- Break the cycle with a **global order**: acquire the **lower-indexed** fork first. Let
+  `a = min(id, (id+1)%n)`, `b = max(...)`; lock `forks[a]` then `forks[b]`, eat, unlock both.
+
+Graded concurrently: every philosopher must reach its full `eat_count` and the program must
+terminate (a deadlock shows up as a timeout).

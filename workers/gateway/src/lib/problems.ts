@@ -1568,6 +1568,81 @@ int main(void) {
 #include "impl.c"
 `;
 
+const SPSC_HEADER = `#ifndef SPSC_H
+#define SPSC_H
+#include <stdatomic.h>
+typedef struct { int *buf; unsigned cap; _Atomic unsigned head; _Atomic unsigned tail; } spsc_t;
+void spsc_init(spsc_t *q, int *storage, unsigned cap);
+int spsc_push(spsc_t *q, int v);
+int spsc_pop(spsc_t *q, int *out);
+#endif
+`;
+const SPSC_DRIVER = `#include "spsc.h"
+#include <stdio.h>
+#include <pthread.h>
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { g_total++; if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } } while (0)
+static spsc_t g_q; static int g_n; static volatile int g_ok;
+static void *producer(void *u) { (void)u; int v = 0; while (v < g_n) { if (spsc_push(&g_q, v)) v++; } return NULL; }
+static void *consumer(void *u) { (void)u; int expect = 0; while (expect < g_n) { int o; if (spsc_pop(&g_q, &o)) { if (o != expect) g_ok = 0; expect++; } } return NULL; }
+static int run(unsigned cap, int n) {
+  static int storage[4096];
+  spsc_init(&g_q, storage, cap); g_n = n; g_ok = 1;
+  pthread_t p, c; pthread_create(&p, 0, producer, 0); pthread_create(&c, 0, consumer, 0);
+  pthread_join(p, 0); pthread_join(c, 0); return g_ok;
+}
+int main(void) {
+  { static int st[4]; spsc_t q; spsc_init(&q, st, 4); int o; int ok = 1;
+    ok &= spsc_push(&q, 10); ok &= spsc_push(&q, 20);
+    ok &= (spsc_pop(&q, &o) && o == 10); ok &= (spsc_pop(&q, &o) && o == 20); ok &= (spsc_pop(&q, &o) == 0);
+    CHECK("single_thread", ok, "basic FIFO push/pop"); }
+  CHECK("small_cap", run(2, 100000), "cap=2 concurrent ordered stream");
+  CHECK("stream_order", run(1024, 200000), "ordered stream of 200000");
+  { static int st[2]; spsc_t q; spsc_init(&q, st, 2); int o; int ok = 1;
+    ok &= spsc_push(&q, 1); ok &= spsc_push(&q, 2); ok &= (spsc_push(&q, 3) == 0);
+    ok &= (spsc_pop(&q, &o) && o == 1); ok &= spsc_push(&q, 3);
+    CHECK("full_empty", ok, "full returns 0; pop frees a slot"); }
+  CHECK("stress", run(256, 500000), "stress ordered stream");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const DINING_HEADER = `#ifndef DINING_H
+#define DINING_H
+#include <pthread.h>
+void dine(int id, int n, pthread_mutex_t *forks, int eat_count, int *ate);
+#endif
+`;
+const DINING_DRIVER = `#include "dining.h"
+#include <stdio.h>
+#include <pthread.h>
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { g_total++; if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } } while (0)
+static pthread_mutex_t g_forks[64]; static int g_n, g_eat, g_ate[64];
+typedef struct { int id; } darg;
+static void *phil(void *a) { darg *d = a; dine(d->id, g_n, g_forks, g_eat, g_ate); return NULL; }
+static int run(int n, int eat) {
+  g_n = n; g_eat = eat;
+  for (int i = 0; i < n; i++) { pthread_mutex_init(&g_forks[i], 0); g_ate[i] = 0; }
+  pthread_t t[64]; darg args[64];
+  for (int i = 0; i < n; i++) { args[i].id = i; pthread_create(&t[i], 0, phil, &args[i]); }
+  for (int i = 0; i < n; i++) pthread_join(t[i], 0);
+  int ok = 1; for (int i = 0; i < n; i++) if (g_ate[i] != eat) ok = 0; return ok;
+}
+int main(void) {
+  CHECK("two", run(2, 100), "2 philosophers each eat 100");
+  CHECK("three", run(3, 1000), "3 philosophers each eat 1000");
+  CHECK("five", run(5, 1000), "5 philosophers each eat 1000");
+  CHECK("many_meals", run(5, 10000), "5 philosophers each eat 10000");
+  CHECK("large_table", run(16, 500), "16 philosophers each eat 500");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -2277,6 +2352,22 @@ const PROBLEMS: Record<string, HarnessProblem> = {
     compilerOptions: "-std=c11 -O1 -g -pthread -fsanitize=address,undefined",
     cpuTimeLimit: 6, wallTimeLimit: 15, memoryLimitKb: 262144,
     testVisibility: { as_mutex: "sample", signal_release: "hidden", permits: "hidden", high_contention: "hidden", post_before_wait: "hidden" },
+  },
+  "m7-p-spsc-ring": {
+    id: "m7-p-spsc-ring", languageId: 50,
+    header: { name: "spsc.h", content: SPSC_HEADER }, driver: SPSC_DRIVER,
+    implName: "impl.c", learnerFileName: "spsc.c",
+    compilerOptions: "-std=c11 -O1 -g -pthread -fsanitize=thread",
+    cpuTimeLimit: 8, wallTimeLimit: 18, memoryLimitKb: 262144,
+    testVisibility: { single_thread: "sample", small_cap: "hidden", stream_order: "hidden", full_empty: "hidden", stress: "hidden" },
+  },
+  "m7-p-dining": {
+    id: "m7-p-dining", languageId: 50,
+    header: { name: "dining.h", content: DINING_HEADER }, driver: DINING_DRIVER,
+    implName: "impl.c", learnerFileName: "dining.c",
+    compilerOptions: "-std=c11 -O1 -g -pthread -fsanitize=address,undefined",
+    cpuTimeLimit: 6, wallTimeLimit: 15, memoryLimitKb: 262144,
+    testVisibility: { two: "sample", three: "hidden", five: "hidden", many_meals: "hidden", large_table: "hidden" },
   },
 };
 

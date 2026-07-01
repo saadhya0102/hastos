@@ -1,0 +1,24 @@
+Implement a **lock-free single-producer / single-consumer (SPSC) ring buffer** — the fastest queue
+there is when exactly one thread pushes and one pops. No locks; correctness comes from careful
+memory ordering.
+
+## Your task
+
+In `spsc.c`, implement (init provided):
+
+```c
+int spsc_push(spsc_t *q, int v);    // producer only; 1 if pushed, 0 if full
+int spsc_pop(spsc_t *q, int *out);  // consumer only; 1 if popped, 0 if empty
+```
+
+## Hints (no spoilers)
+
+- The producer **owns** `tail`; the consumer **owns** `head`. Each reads its own index **relaxed**
+  and the other's index with **acquire**, and publishes its own with **release**.
+- Full when `tail - head == cap`; empty when `head == tail`. Index into `buf[idx & (cap - 1)]`
+  (cap is a power of two).
+- Store the value *before* publishing the updated index (release), so the other thread only sees
+  the index bump after the data is visible.
+
+Graded under ThreadSanitizer with a concurrent producer/consumer streaming values; order must be
+preserved with no race.

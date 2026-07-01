@@ -15,7 +15,7 @@ Oracle's Always Free tier has two options:
 > image (`mechaadi/judge0:1.0.0-aarch64`) via `infra/judge0/docker-compose.arm64.yml`. It
 > supports C, C++, Rust, Go, and Python (everything HastOS grades today) but **not** nasm
 > assembly. For the future assembly problems (Module M2), either build Judge0 for arm64 from
-> source, or run the official x86 image (`docker-compose.yml`) on an x86 host.
+> source, or run the official x86   image (`docker-compose.yml`) on an x86 host.
 
 ## Step-by-step
 
