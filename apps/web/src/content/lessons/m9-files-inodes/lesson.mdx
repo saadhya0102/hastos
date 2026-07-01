@@ -2,18 +2,52 @@
 
 A file system turns a flat array of disk blocks into the familiar tree of named files. The central
 data structure is the **inode**, and understanding what it holds (and what it doesn't) clears up a
-surprising amount of Unix behavior — hard links, the difference between a name and a file, and how
-paths are resolved.
+surprising amount of Unix behavior — hard links, the difference between a name and a file, how paths
+are resolved, and why `fork` makes two processes share a file offset.
+
+## On-disk layout
+
+Before the inode, picture the whole disk (or partition) divided into fixed-size **blocks** (commonly
+4 KB) grouped into regions. A classic Unix-style layout (à la the OSTEP "vsfs"):
+
+```
+| Super | inode  | data   | inode table          | data region                 |
+| block | bitmap | bitmap | (array of inodes)    | (file + directory data)     |
+```
+
+- **Superblock**: filesystem-wide metadata — how many inodes/blocks, where each region starts, magic
+  number. Read first at mount.
+- **Inode bitmap / data bitmap**: one bit per inode / data block, marking free vs allocated.
+  Allocating a file block = find a 0 bit, set it to 1.
+- **Inode table**: a packed array of inodes. Inode number `N` lives at a computable offset, so
+  "inode N" is a direct index — no search.
+- **Data region**: the actual file contents and directory contents.
+
+<KnowledgeCheck
+  id="fi-super"
+  type="mcq"
+  prompt="What is the role of the bitmaps in a classic file-system layout?"
+  options={[
+    "They store file names",
+    "They track which inodes and data blocks are free vs. allocated",
+    "They cache recently used blocks",
+    "They hold the directory tree"
+  ]}
+  answer={1}
+  explanation="The inode bitmap and data bitmap record allocation state; allocating means flipping a free bit to used."
+/>
 
 ## The inode
 
 An **inode** ("index node") holds a file's **metadata** and the locations of its data blocks:
 
-- size, owner, permissions, timestamps, link count, type;
+- size, owner (uid/gid), permission bits, timestamps (atime/mtime/ctime), **link count**, type
+  (regular file, directory, symlink, device...);
 - **block pointers** to where the file's data lives on disk.
 
 Notice what's **not** in the inode: the **file's name**. A name is stored separately, in a
-**directory**. The inode is the file; the name is just a label pointing to it.
+**directory**. The inode is the file; the name is just a label pointing to it. Inodes are small
+(commonly 128 or 256 bytes) so many pack into one block.
 
 <KnowledgeCheck
   id="fi-inode"
@@ -32,11 +66,21 @@ Notice what's **not** in the inode: the **file's name**. A name is stored separa
 ## Directories are files that map names to inodes
 
 A **directory** is itself a special file whose contents are a list of **(name → inode number)**
-entries. Looking up `report.txt` in a directory means scanning its entries for that name to find
-the inode number, then reading that inode.
+entries. A common on-disk entry format records the inode number, entry length, name length, and the
+name bytes:
 
-This indirection is why a file can have **multiple names** (hard links) and why renaming or moving
-within a filesystem is cheap (just edit directory entries, not the data).
+```
+inum | reclen | namelen | name
+5    | 12     | 2       | "."
+2    | 12     | 3       | ".."
+13   | 16     | 8       | "report"
+24   | 16     | 7       | "photos"
+```
+
+Looking up `report` means scanning entries for that name to get inode 13, then reading that inode.
+Every directory has `.` (itself) and `..` (parent). This name/inode split is why a file can have
+**multiple names** (hard links) and why renaming or moving *within a filesystem* is cheap — you edit
+directory entries, not the data.
 
 <KnowledgeCheck
   id="fi-dir"
@@ -56,13 +100,14 @@ within a filesystem is cheap (just edit directory entries, not the data).
 
 Resolving `/home/ann/report.txt` walks the tree, one component at a time:
 
-1. Start at the root inode (a well-known inode number).
-2. In root's directory, find `home` → its inode → read that directory.
+1. Start at the **root inode** (a well-known, fixed inode number, e.g. 2).
+2. Read root's directory data, find `home` → its inode number → read that inode → read its data.
 3. Find `ann` → its inode → read that directory.
 4. Find `report.txt` → its inode → now you can read the file.
 
-Each step is a directory lookup followed by an inode read. (This is why deep paths and cold caches
-cost multiple disk reads — and why the buffer cache, next lesson, matters.)
+Each step is a directory lookup followed by an inode read. A deep path on a cold cache costs multiple
+disk reads per component — which is exactly why the **buffer cache** (next lesson) and the **dentry
+cache** exist.
 
 <KnowledgeCheck
   id="fi-path"
@@ -81,10 +126,14 @@ cost multiple disk reads — and why the buffer cache, next lesson, matters.)
 ## Hard links vs. symbolic links
 
 - A **hard link** is another directory entry pointing at the **same inode**. The inode's **link
-  count** tracks how many names refer to it; the data is freed only when the count hits zero. All
-  hard links are equal — there's no "original."
-- A **symbolic (soft) link** is a tiny file whose contents are a **path string**. It points at a
-  *name*, not an inode, so it can cross filesystems and can dangle if the target is removed.
+  count** tracks how many names refer to it; the data is freed only when the count hits **zero** (and
+  no process still has it open). All hard links are equal — there's no "original." Hard links can't
+  span filesystems (inode numbers are per-filesystem) and typically can't target directories.
+- A **symbolic (soft) link** is a tiny file whose data is a **path string**. It points at a *name*,
+  not an inode, so it can cross filesystems and can **dangle** if the target is removed.
+
+This is why `rm` is really `unlink`: it removes a *directory entry* and decrements the link count.
+The blocks come back only when the last link is gone.
 
 <KnowledgeCheck
   id="fi-link"
@@ -103,14 +152,34 @@ cost multiple disk reads — and why the buffer cache, next lesson, matters.)
 ## Block pointers: direct and indirect
 
 A file's data blocks are referenced by pointers in the inode. To support both small and huge files
-efficiently, classic inodes use a mix:
+efficiently, classic inodes use a **multi-level index**:
 
 - **Direct pointers** — point straight at the first few data blocks (fast for small files).
-- **Indirect pointers** — point at a block full of pointers (single indirect), or pointers to
-  pointer-blocks (double/triple indirect) for very large files.
+- **Single indirect** — points at a block full of pointers.
+- **Double / triple indirect** — a pointer to a block of pointers to blocks of pointers, for very
+  large files.
 
-Small files need only direct pointers; large files chain through indirection — a tree that scales
-to huge sizes while keeping small-file access cheap.
+Small files need only direct pointers; large files chain through indirection — an unbalanced tree
+that keeps small-file access cheap while scaling to enormous sizes. A quick capacity estimate with
+4 KB blocks and 4-byte pointers (so **1024 pointers per block**):
+
+```
+direct (12 ptrs)         ->  12 * 4KB         =   48 KB
+single indirect          ->  1024 * 4KB       =    4 MB
+double indirect          ->  1024^2 * 4KB     =    4 GB
+triple indirect          ->  1024^3 * 4KB     =    4 TB
+```
+
+Most files are small, so most accesses hit only direct pointers — the design optimizes the common
+case.
+
+<KnowledgeCheck
+  id="fi-indirect-num"
+  type="numeric"
+  prompt="With 4KB blocks and 4-byte block pointers, how many data-block pointers fit in one single-indirect block?"
+  answer={1024}
+  explanation="4096 bytes / 4 bytes per pointer = 1024 pointers."
+/>
 
 <KnowledgeCheck
   id="fi-indirect"
@@ -126,12 +195,45 @@ to huge sizes while keeping small-file access cheap.
   explanation="Direct pointers keep small files fast; single/double/triple indirect blocks scale to large files without bloating every inode."
 />
 
+## Open files: descriptors, the open-file table, and offsets
+
+`open()` returns a small integer **file descriptor** (fd) — an index into the process's fd table.
+There are three levels of indirection, and the middle one explains a lot:
+
+```
+per-process fd table   ->   system-wide open-file table   ->   inode (in-memory)
+  fd 3  ------------------>  { offset, flags, refcount } ------> inode 13
+```
+
+- The **open-file entry** holds the current **read/write offset** and the open flags.
+- `fork()` **shares** open-file entries (the child copies fd *numbers* pointing at the *same* entry),
+  so parent and child **share one offset** — writes from both advance the same position (this is why
+  shell redirection interleaves correctly).
+- `dup()`/`dup2()` also share an entry; two separate `open()`s of the same file get **separate**
+  entries (independent offsets) but the same inode.
+
+<KnowledgeCheck
+  id="fi-offset"
+  type="mcq"
+  prompt="After fork(), why do parent and child share a single file offset for an inherited fd?"
+  options={[
+    "They have separate open-file entries",
+    "fork copies the fd numbers but they point at the same shared open-file table entry, which holds the offset",
+    "The offset lives in the inode",
+    "Offsets are always global"
+  ]}
+  answer={1}
+  explanation="fork duplicates fd table entries that reference the same open-file entry; the offset lives there, so it's shared and advances for both."
+/>
+
 ## Recap
 
-- The inode holds metadata + data-block pointers — but **not** the name.
+- The disk is laid out as superblock + bitmaps + inode table + data region.
+- The inode holds metadata + multi-level (direct/indirect) data-block pointers — but **not** the
+  name.
 - Directories map names → inode numbers; this enables hard links and cheap renames.
 - Path resolution walks component-by-component from the root, lookup then inode read.
-- Hard links share an inode (link count); symlinks store a path. Direct + indirect pointers scale
-  from tiny to huge files.
+- Hard links share an inode (link count → 0 frees data); symlinks store a path.
+- fd → open-file entry (offset/flags) → inode; `fork`/`dup` share the entry (shared offset).
 
 Next: **The Buffer Cache and LRU** — caching disk blocks in RAM.

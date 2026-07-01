@@ -11,6 +11,18 @@ A read that hits the cache costs ~100 ns instead of ~100 µs–10 ms from disk. 
 strong locality (re-reading inodes, directories, file data), a modest RAM cache absorbs the vast
 majority of reads. The OS uses **most free RAM** as page cache — "unused RAM is wasted RAM."
 
+How much does the hit rate matter? Average access time = `hit_rate × cache_time + miss_rate ×
+disk_time`. With a 100 ns cache and 1 ms disk:
+
+```
+95% hits:  0.95*100ns + 0.05*1ms   ~= 50,095 ns  (~50 us avg)
+99% hits:  0.99*100ns + 0.01*1ms   ~= 10,099 ns  (~10 us avg)
+99.9% hits:0.999*100ns + 0.001*1ms ~=  1,100 ns  (~1.1 us avg)
+```
+
+Because the miss penalty is so large, the **last few percent of hit rate dominate** average latency
+— which is why replacement policy is worth caring about.
+
 <KnowledgeCheck
   id="bc-why"
   type="mcq"
@@ -24,6 +36,13 @@ majority of reads. The OS uses **most free RAM** as page cache — "unused RAM i
   answer={1}
   explanation="Caching hot blocks in RAM turns slow disk reads into fast memory reads, exploiting locality."
 />
+
+## The optimal policy (and why we can't use it)
+
+The provably best replacement policy is **Belady's OPT**: evict the block whose **next use is
+farthest in the future**. It minimizes misses — but it needs to *know the future*, so it's only a
+**theoretical yardstick** for comparing real policies. Real policies predict the future from the
+past; LRU is the workhorse.
 
 ## LRU: evict the least recently used
 
@@ -68,18 +87,66 @@ ordered by recency: `get`/`put` move the node to the front (most recent); evicti
   explanation="The hash map gives O(1) lookup; the doubly linked list gives O(1) move-to-front and tail eviction."
 />
 
+## FIFO and Belady's anomaly
+
+The simplest policy, **FIFO**, evicts the oldest-inserted block regardless of use. It's cheap but
+has a famous defect: **Belady's anomaly** — for some workloads, giving FIFO *more* cache can produce
+*more* misses. LRU (and any **stack algorithm**, where a larger cache always contains a superset of a
+smaller one's contents) is immune to this. That "stack property" is a nice reason to prefer LRU over
+FIFO beyond raw hit rate.
+
+<KnowledgeCheck
+  id="bc-belady"
+  type="mcq"
+  prompt="Belady's anomaly is the surprising phenomenon that..."
+  options={[
+    "LRU is always optimal",
+    "For FIFO, increasing the cache size can increase the number of misses",
+    "Bigger caches are always better",
+    "Disk is faster than RAM"
+  ]}
+  answer={1}
+  explanation="FIFO isn't a stack algorithm, so a larger cache isn't a superset of a smaller one — sometimes more frames cause more misses. LRU/OPT don't suffer this."
+/>
+
+## Where LRU fails: sequential scans
+
+LRU's weakness is a **large sequential scan** (e.g., reading a file bigger than the cache once). The
+scan touches each block exactly once but, being "most recently used," evicts all the genuinely hot
+blocks — **cache pollution**. Fixes used in practice:
+
+- **Scan resistance**: policies like **ARC** and **2Q** separate "seen once" from "seen again," so a
+  one-time scan can't evict frequently-reused pages.
+- **LFU** (least frequently used) favors popularity over recency (but adapts slowly).
+- Databases sometimes use **MRU** for known scan patterns, or mark scan reads as "don't cache"
+  (`posix_fadvise`).
+
+<Aside kind="insight">
+There's no single best policy — it depends on the access pattern. Production caches (Linux uses a
+two-list LRU approximation; databases use ARC/2Q-style schemes) blend recency and frequency to stay
+robust against scans while still exploiting locality.
+</Aside>
+
+## Reads ahead, writes behind
+
+- **Read-ahead (prefetch)**: on detecting sequential access, the OS fetches the *next* blocks before
+  they're requested, turning would-be misses into hits and keeping the disk pipeline full.
+- **Write-back vs. write-through** (below) governs when dirty data hits disk.
+
 ## Write-back vs. write-through
 
 Caching writes raises a durability question:
 
 - **Write-through**: every write goes to the cache **and** to disk immediately. Safer (data is
   durable) but slow (disk on every write).
-- **Write-back**: writes update the cache and mark the block **dirty**; the dirty block is flushed
-  to disk later (on eviction or periodically). Fast (absorbs bursts, coalesces writes) but a crash
-  before flush **loses** the buffered writes.
+- **Write-back**: writes update the cache and mark the block **dirty**; the dirty block is flushed to
+  disk later (on eviction, on `fsync`, or by periodic writeback threads). Fast (absorbs bursts,
+  coalesces overwrites, batches sequential writes) but a crash before flush **loses** the buffered
+  writes.
 
-Most systems use write-back for speed and rely on `fsync` and journaling (next lesson) for
-durability when it matters.
+Most systems use write-back for speed and rely on `fsync` and journaling (next lesson) for durability
+when it matters. Linux exposes tuning like `dirty_ratio`/`dirty_background_ratio` (how much dirty
+data may accumulate before writeback is forced).
 
 <KnowledgeCheck
   id="bc-wb"
@@ -97,18 +164,38 @@ durability when it matters.
 
 ## Approximating LRU: CLOCK
 
-True LRU requires updating recency on **every** access, which is expensive at OS scale. **CLOCK**
-approximates it cheaply: keep pages in a circle with a **reference bit** set on access. A "hand"
-sweeps; if it finds a page with reference bit 1, it clears it and moves on (second chance); the
-first page it finds with bit 0 is evicted. CLOCK gets near-LRU quality at far lower cost — and
-you'll implement its fault-counting in this module.
+True LRU requires updating recency on **every** access (moving a node to the front), which is
+expensive at OS scale where accesses go through the MMU. **CLOCK** (second-chance) approximates it
+cheaply: keep pages in a circle, each with a hardware-set **reference bit**. A "hand" sweeps; if it
+finds a page with reference bit 1, it clears the bit and moves on (a second chance); the first page it
+finds with bit 0 is evicted. CLOCK gets near-LRU quality at far lower cost — and you'll implement its
+fault-counting in this module. (Variants add a **dirty bit** to prefer evicting clean pages, which
+need no writeback.)
+
+<KnowledgeCheck
+  id="bc-clock"
+  type="mcq"
+  prompt="In CLOCK, what happens when the hand lands on a page with reference bit = 1?"
+  options={[
+    "It evicts that page immediately",
+    "It clears the bit (gives a second chance) and advances to the next page",
+    "It doubles the cache size",
+    "It flushes the whole cache"
+  ]}
+  answer={1}
+  explanation="A set reference bit earns a second chance: the hand clears it and moves on; only a page found with bit 0 is evicted."
+/>
 
 ## Recap
 
-- The buffer/page cache keeps hot disk blocks in RAM; hits are ~1000x+ faster than disk.
-- LRU evicts the least-recently-used entry; the O(1) design is hash map + doubly linked list.
-- Write-through is safe-but-slow; write-back is fast-but-loses-data-on-crash (needs fsync/journal).
-- CLOCK approximates LRU cheaply using a reference bit and a sweeping hand.
+- The buffer/page cache keeps hot disk blocks in RAM; hits are ~1000x+ faster, and the last few
+  percent of hit rate dominate average latency.
+- **OPT** (evict farthest-future use) is the unattainable optimum; **LRU** approximates it via
+  recency. The O(1) design is hash map + doubly linked list.
+- **FIFO** is cheap but suffers **Belady's anomaly**; LRU (a stack algorithm) doesn't.
+- Sequential scans pollute LRU; ARC/2Q/LFU add scan resistance. Read-ahead prefetches; write-back
+  defers writes (fast, but crash-lossy).
+- **CLOCK** approximates LRU cheaply with a reference bit and sweeping hand.
 
 ## Practice
 

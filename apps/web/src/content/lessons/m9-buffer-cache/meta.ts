@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m9-filesystems",
   title: "The Buffer Cache and LRU",
   order: 2,
-  estMinutes: 24,
+  estMinutes: 36,
   objectives: [
     "Explain why the OS caches disk blocks in RAM",
     "Implement LRU eviction conceptually",

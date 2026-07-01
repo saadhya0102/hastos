@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m9-filesystems",
   title: "Files, Directories, and Inodes",
   order: 1,
-  estMinutes: 26,
+  estMinutes: 38,
   objectives: [
     "Explain what an inode stores and what it does not",
     "Trace path resolution through directories",

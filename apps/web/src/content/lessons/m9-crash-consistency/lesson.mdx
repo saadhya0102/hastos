@@ -9,14 +9,21 @@ free-space bitmap). If power fails **between** those writes, the file system can
 
 Appending a block to a file requires (at least) three updates:
 
-1. mark a new data block as used (bitmap),
-2. write the data block,
+1. mark a new data block as used (data bitmap),
+2. write the data block itself,
 3. update the inode (size + new block pointer).
 
-These can't be made atomic on disk. If a crash happens after (1) but before (3), you've allocated a
-block that no file references — or worse, an inode that points to a block not marked used, which
-could be handed to another file → **corruption**. Doing the writes in any fixed order still leaves
-*some* crash window broken.
+These can't be made atomic on disk. Consider the crash windows:
+
+```
+only inode written   -> inode points at a block NOT marked used
+                        (that block may be handed to another file -> shared/corrupt)
+only bitmap written  -> a block is marked used but no file references it (space leak)
+only data written    -> harmless (no metadata points at it) but wasted
+```
+
+Doing the writes in any *fixed* order still leaves *some* crash window broken. You cannot order your
+way out of the problem — you need a recovery mechanism.
 
 <KnowledgeCheck
   id="cc-problem"
@@ -32,20 +39,51 @@ could be handed to another file → **corruption**. Doing the writes in any fixe
   explanation="Multi-block updates aren't atomic on disk, so a power failure between writes can corrupt file-system structures."
 />
 
+## The old way: fsck
+
+Early Unix simply ran **fsck** (file-system check) after a crash: scan the *entire* file system and
+repair inconsistencies (e.g., an inode link count that disagrees with directory entries, blocks
+marked used but unreferenced). fsck works but has a fatal flaw at scale — it must scan **everything**,
+so recovery time grows with disk size, not with the amount of in-flight work. On a multi-terabyte
+disk that's minutes to hours. Journaling replaced it precisely because recovery should be proportional
+to *what was happening at crash time*, not to total capacity.
+
+<KnowledgeCheck
+  id="cc-fsck"
+  type="mcq"
+  prompt="What is the main drawback of relying on fsck for crash recovery?"
+  options={[
+    "It needs a journal",
+    "It must scan the entire file system, so recovery time scales with disk size, not with in-flight work",
+    "It loses all data",
+    "It only works on SSDs"
+  ]}
+  answer={1}
+  explanation="fsck's whole-disk scan makes recovery time grow with capacity; journaling recovers in time proportional to the (small) journal instead."
+/>
+
 ## Write-ahead logging (journaling)
 
 The fix: before touching the real structures, **first write your intent to a log (journal)**, then
 apply it. The protocol:
 
-1. Write the planned updates to the **journal** (a reserved on-disk region).
-2. Write a **commit record** marking the transaction complete.
-3. Only then **checkpoint** — apply the updates to their real locations.
-4. Once applied, the journal entry can be reclaimed.
+1. **Journal write**: write the planned updates to the **journal** (a reserved on-disk region).
+2. **Journal commit**: write a **commit record** marking the transaction complete — *after* step 1 is
+   durable.
+3. **Checkpoint**: only now apply the updates to their real (final) locations.
+4. **Free**: once applied, the journal entry can be reclaimed (the journal is a **circular** buffer).
 
 On reboot, the file system **replays the journal**: transactions with a commit record are re-applied
-(they may or may not have been checkpointed — replay is idempotent); transactions **without** a
+(they may or may not have been checkpointed — replay is **idempotent**); transactions **without** a
 commit record are discarded (they never fully happened). Either way the file system ends up
 consistent. This is **write-ahead logging (WAL)** — the same idea databases use for durability.
+
+<Aside kind="pitfall">
+Ordering within commit is critical: the commit record must not reach disk **before** the journal
+contents it certifies. If the disk reorders writes, you could replay a "committed" transaction whose
+body is missing. File systems enforce this with **write barriers / cache-flush (FUA)** commands so
+the journal body is durable before the commit block.
+</Aside>
 
 <KnowledgeCheck
   id="cc-wal"
@@ -79,10 +117,11 @@ consistent. This is **write-ahead logging (WAL)** — the same idea databases us
 
 Journaling everything (including file data) is safe but doubles writes. The common compromise:
 
-- **Data journaling** — journal metadata **and** data. Safest, slowest (everything written twice).
-- **Ordered (metadata) journaling** — journal only metadata, but **write data blocks before** the
-  metadata that references them. Much faster, and avoids the worst case (an inode pointing at
-  garbage). This is the typical default (e.g., ext4 ordered mode).
+- **Data journaling** — journal metadata **and** data. Safest, slowest (everything written twice: once
+  to the journal, once to its final home).
+- **Ordered (metadata) journaling** — journal only metadata, but **write data blocks to their final
+  location before** committing the metadata that references them. Much faster, and avoids the worst
+  case (an inode pointing at garbage/old data). This is the typical default (e.g., ext4 ordered mode).
 
 <KnowledgeCheck
   id="cc-ordered"
@@ -98,12 +137,27 @@ Journaling everything (including file data) is safe but doubles writes. The comm
   explanation="Ordered mode journals metadata only but forces data to disk before the metadata that points to it, preventing inodes from referencing garbage."
 />
 
+## Batching and alternatives
+
+- **Batching**: writing to the journal is extra I/O, so file systems **group many operations into one
+  transaction** over a short window, amortizing the commit and coalescing repeated metadata updates.
+- **Copy-on-write (CoW)**: ZFS and Btrfs avoid overwriting live data at all — they write new
+  versions to free space and then atomically flip a root pointer. A crash simply leaves the old
+  consistent tree. (Trades journaling for CoW's own write-amplification and fragmentation concerns.)
+- **Soft updates**: carefully order writes so the on-disk state is always consistent (or only leaks
+  space, fixable in the background) without a journal — powerful but famously intricate.
+
 ## fsync and durability
 
 The buffer cache (write-back) means a `write()` returning success does **not** mean the data is on
 disk — it may still be a dirty page in RAM. **`fsync(fd)`** forces a file's dirty data (and, done
-right, its metadata) to durable storage. Databases and logs call `fsync` at the moments durability
-truly matters (e.g., after a commit record). Forgetting it is a classic data-loss bug.
+right, its metadata) to durable storage. Two gotchas that cause real bugs:
+
+- To make a newly created file's **name** durable, you must also `fsync` the **directory** — the
+  directory entry is separate metadata.
+- The safe "atomic replace" pattern: write to a temp file, `fsync` it, then `rename()` over the target
+  (rename is atomic), then `fsync` the directory. A crash leaves either the old or new file, never a
+  half-written one.
 
 <KnowledgeCheck
   id="cc-fsync"
@@ -121,11 +175,15 @@ truly matters (e.g., after a commit record). Forgetting it is a classic data-los
 
 ## Recap
 
-- Multi-block updates can't be atomic; a crash mid-update corrupts the file system.
-- Journaling (WAL) writes intent + commit to a log first, then applies; recovery replays committed
-  transactions and discards uncommitted ones.
-- Ordered journaling logs metadata only but writes data first — fast and safe enough.
-- `fsync` forces durability; write() alone doesn't guarantee it.
+- Multi-block updates can't be atomic; a crash mid-update corrupts the file system, and you can't
+  order your way out.
+- The old fix, **fsck**, scans the whole disk (recovery scales with capacity).
+- **Journaling (WAL)** writes intent + commit to a log first, then applies; recovery replays committed
+  transactions and discards uncommitted ones (barriers keep the commit after its body).
+- **Ordered** journaling logs metadata only but writes data first — fast and safe enough; **CoW** and
+  **soft updates** are alternatives.
+- `fsync` forces durability (remember the directory + atomic-rename pattern); `write()` alone doesn't
+  guarantee it.
 
 That completes Module M9 — you understand the storage stack, file-system structures, caching, and
 crash consistency, the foundation for databases next.

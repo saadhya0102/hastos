@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m9-filesystems",
   title: "I/O Devices and the Storage Stack",
   order: 0,
-  estMinutes: 20,
+  estMinutes: 32,
   objectives: [
     "Describe how the CPU talks to devices (registers, interrupts, DMA)",
     "Contrast polling with interrupts",

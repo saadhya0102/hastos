@@ -1,18 +1,25 @@
 # I/O Devices and the Storage Stack
 
 Persistence means surviving a power cycle, which means talking to storage **devices**. Before we
-reach files and inodes, you need a model of how the CPU communicates with devices and what disks
-and SSDs actually cost — because storage latency dwarfs everything and shapes file-system design.
+reach files and inodes, you need a model of how the CPU communicates with devices and what disks and
+SSDs actually cost — because storage latency dwarfs everything and shapes file-system design.
 
 ## How the CPU talks to a device
 
-A device exposes a small set of **registers** (status, command, data). The CPU drives it by:
+A device exposes a small set of **registers** (status, command, data). The CPU drives it with a
+canonical protocol:
 
-1. Polling the **status** register until the device is ready.
-2. Writing data and a **command** to start an operation.
-3. Waiting for completion.
+```
+while (STATUS == BUSY)      ; // 1. wait until the device is ready
+write data to DATA register   // 2. hand over the data (or a DMA descriptor)
+write command to COMMAND      // 3. start the operation
+while (STATUS == BUSY)      ; // 4. wait for completion
+```
 
-Step 3 is the expensive part — and how you wait matters.
+Those registers are reached either via special **port-mapped I/O** instructions (`in`/`out` on x86)
+or, more commonly today, **memory-mapped I/O (MMIO)** — device registers appear at physical addresses,
+so ordinary loads/stores (to uncached memory) talk to the device. Steps 1 and 4 (the waiting) are
+where the cost and the design choices live.
 
 <KnowledgeCheck
   id="io-regs"
@@ -25,19 +32,36 @@ Step 3 is the expensive part — and how you wait matters.
     "Devices run on their own with no CPU involvement"
   ]}
   answer={1}
-  explanation="Devices expose registers; the CPU checks status, writes data/command, and awaits completion."
+  explanation="Devices expose registers; the CPU checks status, writes data/command, and awaits completion — via port I/O or memory-mapped I/O."
 />
 
 ## Polling vs. interrupts vs. DMA
 
-- **Polling**: the CPU loops reading the status register until done. Simple, but **wastes the CPU**
-  spinning during slow I/O.
+- **Polling**: the CPU loops reading the status register until done. Simple and low-latency, but
+  **wastes the CPU** spinning during slow I/O.
 - **Interrupts**: the CPU issues the request, then **sleeps/runs other work**; the device raises an
-  **interrupt** when finished. Far better CPU utilization for slow devices (recall ECF). For very
-  fast devices, interrupt overhead can exceed a quick poll — so high-performance NVMe sometimes
-  polls.
+  **interrupt** when finished, and the OS wakes the waiting process (recall ECF). Far better CPU
+  utilization for slow devices. But interrupts aren't free — each costs a context switch into the
+  handler, and under a flood of completions (fast NICs/NVMe) the machine can suffer an **interrupt
+  livelock**. Hence **hybrid** schemes: interrupt coalescing, and Linux's **NAPI**, which switches to
+  polling under high load.
 - **DMA (Direct Memory Access)**: a dedicated controller moves data between the device and memory
-  **without the CPU copying each byte**, freeing the CPU entirely during the transfer.
+  **without the CPU copying each byte**. The CPU sets up a descriptor (address + length), starts the
+  transfer, and gets one interrupt on completion — freeing it during the bulk move.
+
+<KnowledgeCheck
+  id="io-poll"
+  type="mcq"
+  prompt="For a very fast device under heavy load, why might polling beat pure interrupts?"
+  options={[
+    "Polling uses less power",
+    "Interrupt overhead (a context switch per completion) can dominate; polling avoids per-event interrupt cost",
+    "Polling transfers more data per operation",
+    "Interrupts don't work on SSDs"
+  ]}
+  answer={1}
+  explanation="When completions arrive faster than interrupts can be serviced, per-interrupt overhead dominates; polling (or NAPI-style hybrid) amortizes it."
+/>
 
 <KnowledgeCheck
   id="io-dma"
@@ -53,15 +77,32 @@ Step 3 is the expensive part — and how you wait matters.
   explanation="DMA offloads the bulk data movement from the CPU, which only sets up the transfer and gets an interrupt on completion."
 />
 
+## The device-driver / layering picture
+
+The OS keeps device specifics in **drivers** behind a uniform interface, so the file system speaks to
+a generic **block device** ("read/write block N") and the driver translates to that hardware's
+register dance. Layering:
+
+```
+file system  ->  generic block layer (scheduler, queue)  ->  driver  ->  device
+```
+
+The generic block layer can **reorder and merge** requests (an **I/O scheduler**) — historically to
+minimize HDD head movement (elevator/SCAN), and today to fairly share fast SSDs and batch requests.
+
 ## Disks vs. SSDs
 
-- **Hard disk (HDD)**: spinning platters + a moving head. Access time is dominated by **seek**
-  (move the head) + **rotational latency** — milliseconds. **Sequential** access is far faster than
-  **random** because it avoids seeks. This is why file systems try to lay related data
-  contiguously.
-- **SSD (flash)**: no moving parts; random access is ~constant and ~100x faster than HDD random.
-  But flash has quirks: you can't overwrite in place — you erase large **blocks** and write
-  **pages**, causing **write amplification** and the need for wear leveling and garbage collection.
+- **Hard disk (HDD)**: spinning platters + a moving head. Access time = **seek** (move the head) +
+  **rotational latency** (wait for the sector to spin under the head) + transfer — **milliseconds**.
+  **Sequential** access is far faster than **random** because it avoids seeks. A 7200 RPM drive spins
+  once every ~8.3 ms, so average rotational latency alone is ~4 ms. This is why file systems lay
+  related data contiguously and prefer large sequential I/O.
+- **SSD (flash)**: no moving parts; random access is ~constant and ~100x faster than HDD random. But
+  flash has quirks: you **can't overwrite in place** — you write **pages** but must **erase** whole
+  larger **blocks** first. A **Flash Translation Layer (FTL)** remaps logical→physical, does **wear
+  leveling** (spread writes so cells wear evenly) and **garbage collection** (compact valid pages to
+  reclaim erase blocks), which causes **write amplification**. `TRIM` lets the FS tell the SSD which
+  blocks are free so GC can skip them.
 
 <KnowledgeCheck
   id="io-hdd"
@@ -88,21 +129,31 @@ Step 3 is the expensive part — and how you wait matters.
     "Reads slow down writes"
   ]}
   answer={1}
-  explanation="Flash erases in large blocks and writes in pages, so updates can cause extra internal copying/rewriting — write amplification."
+  explanation="Flash erases in large blocks and writes in pages, so updates can cause extra internal copying/rewriting — write amplification, managed by the FTL."
 />
+
+<Aside kind="note">
+SSD implication for software: because random writes trigger GC and wear, **large, aligned, sequential
+writes are still preferred** even on SSDs. This is a big reason LSM-tree storage engines (Module 11)
+— which turn random writes into sequential appends — pair so well with flash.
+</Aside>
 
 ## Why this shapes file systems
 
 Because storage is orders of magnitude slower than RAM (recall the latency ladder), file systems
-obsess over: **caching** in RAM (the buffer cache, next lessons), **batching** and **sequential
-layout** to amortize seeks, and **crash consistency** so a power loss mid-write doesn't corrupt
-data. Every design choice ahead traces back to "the disk is slow and might lose power."
+obsess over three things: **caching** in RAM (the buffer cache, next lessons), **batching** and
+**sequential layout** to amortize seeks / avoid write amplification, and **crash consistency** so a
+power loss mid-write doesn't corrupt data. Every design choice ahead traces back to "the disk is slow
+and might lose power."
 
 ## Recap
 
-- The CPU drives devices via status/command/data registers.
-- Polling wastes CPU on slow I/O; interrupts let it do other work; DMA offloads bulk transfer.
-- HDDs punish random access (seek/rotation); SSDs are fast-random but suffer write amplification.
+- The CPU drives devices via status/command/data registers (port I/O or MMIO), behind a driver +
+  generic block layer that can reorder/merge requests.
+- Polling wastes CPU on slow I/O; interrupts let it do other work (but can livelock — hence hybrids
+  like NAPI); DMA offloads bulk transfer.
+- HDDs punish random access (seek/rotation); SSDs are fast-random but need an FTL for wear leveling +
+  GC, causing write amplification.
 - Storage slowness motivates caching, sequential layout, and crash-consistency techniques.
 
 Next: **Files, Directories, and Inodes** — the file system's core data structures.
