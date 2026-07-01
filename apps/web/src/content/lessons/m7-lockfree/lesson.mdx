@@ -144,6 +144,59 @@ and the lone consumer walks the list without competing dequeuers.
   explanation="With exactly one dequeuer, there are no competing consumers, so consumer-side ABA/reclamation races vanish, simplifying correctness."
 />
 
+## Progress guarantees: a precise vocabulary
+
+"Non-blocking" comes in strengths, worth stating precisely:
+
+- **Wait-free** (strongest): *every* thread finishes its operation in a bounded number of steps —
+  no starvation, ever. Hardest to build.
+- **Lock-free**: the *system* makes progress (some thread always completes), but an individual thread
+  can be starved by others repeatedly winning the CAS race. A CAS-retry loop is lock-free.
+- **Obstruction-free** (weakest): a thread finishes if it eventually runs alone (no contention).
+- **Blocking**: a stalled thread (holding a lock) can halt everyone — what locks are.
+
+<KnowledgeCheck
+  id="lf-progress"
+  type="mcq"
+  prompt="What's the difference between lock-free and wait-free?"
+  options={[
+    "They're the same",
+    "Lock-free guarantees the system makes progress (some thread completes) but a given thread may starve; wait-free bounds every thread's completion",
+    "Wait-free uses locks",
+    "Lock-free is slower by definition"
+  ]}
+  answer={1}
+  explanation="Lock-free guarantees global progress (a failed CAS means someone else succeeded); wait-free additionally bounds each individual thread's steps, ruling out starvation."
+/>
+
+## Safe memory reclamation
+
+The deep reason lock-free `free` is hard: after you unlink a node, **another thread may still be
+reading it**, so you can't immediately free it (use-after-free) — but you also can't leak it. The
+three standard solutions:
+
+- **Hazard pointers**: each thread publishes the pointers it's currently using; a node is freed only
+  once no thread's hazard pointers reference it.
+- **Epoch-based reclamation (EBR)**: threads announce an epoch on entry; memory retired in epoch N is
+  freed only after all threads have advanced past N.
+- **RCU (Read-Copy-Update)**: readers run lock-free in read-side critical sections; writers publish new
+  versions and defer reclamation until a **grace period** (after which no reader can hold the old
+  version) — the backbone of scalable read-mostly structures in the Linux kernel.
+
+<KnowledgeCheck
+  id="lf-rcu"
+  type="mcq"
+  prompt="In RCU, when is it safe to free memory that a writer has replaced/unlinked?"
+  options={[
+    "Immediately after unlinking",
+    "After a grace period — once every reader that could have held a reference to the old version has finished its read-side critical section",
+    "Never",
+    "When the CAS succeeds"
+  ]}
+  answer={1}
+  explanation="RCU defers reclamation until a grace period elapses, guaranteeing no reader still references the old version, so the free can't cause a use-after-free."
+/>
+
 ## When to go lock-free
 
 Rarely. Locks are simpler, easier to verify, and fast enough for the vast majority of code.

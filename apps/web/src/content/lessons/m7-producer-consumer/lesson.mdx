@@ -85,6 +85,33 @@ Then `join` all workers so resources are released and no thread outlives the poo
   explanation="Wake all blocked workers (broadcast on a shutdown flag, or poison pills), let them exit cleanly, and join them."
 />
 
+## Scaling up: work-stealing and futures
+
+A single shared queue is simple but becomes a **contention bottleneck** — every worker locks the same
+queue on every task. High-performance runtimes (Go's scheduler, Rust's Rayon, Java's ForkJoinPool)
+use **work-stealing**: each worker has its **own deque** of tasks, pushing/popping from one end
+lock-free-ish; when a worker runs dry, it **steals** from the *other* end of a random victim's deque.
+Local work stays local (great cache behavior, no contention); stealing only happens when a worker is
+idle, balancing load automatically.
+
+To get a task's **result** back, submission returns a **future/promise**: a handle the caller can wait
+on, which the worker fulfills when the task completes (implemented with a per-future
+mutex+condvar/flag). This turns "fire and forget" into "submit and later await."
+
+<KnowledgeCheck
+  id="pc-steal"
+  type="mcq"
+  prompt="Why do high-performance thread pools use work-stealing (per-worker deques) instead of one shared queue?"
+  options={[
+    "It uses less memory",
+    "Per-worker deques keep the common case contention-free and cache-local; idle workers steal from others only when needed, balancing load",
+    "It runs tasks sequentially",
+    "Shared queues can't hold tasks"
+  ]}
+  answer={1}
+  explanation="A shared queue serializes all workers on one lock; per-worker deques make local push/pop cheap and only synchronize when an idle worker steals, giving both low contention and load balancing."
+/>
+
 ## Sizing the pool
 
 How many workers?

@@ -150,6 +150,38 @@ unlock(m);
 The dequeue mirror waits on `not_empty` and signals `not_full`. This is exactly the **blocking
 bounded queue** you'll implement.
 
+## Mesa vs. Hoare, and signal vs. broadcast
+
+Why exactly must you loop? It comes down to **monitor semantics**:
+
+- **Hoare semantics**: signaling immediately transfers the lock+CPU to the woken waiter, so the
+  predicate is guaranteed true on wake — an `if` would suffice. Elegant but requires tight scheduler
+  cooperation.
+- **Mesa semantics** (what pthreads, Java, and essentially all real systems use): `signal` just marks
+  a waiter runnable; it competes for the mutex like anyone else and may find the predicate falsified
+  by the time it runs. **Hence the `while` loop.** Mesa is simpler to implement, at the cost of the
+  re-check.
+
+**Signal vs. broadcast**: use `signal` (wake one) when any single waiter can make progress and all
+wait on the *same* predicate. Use `broadcast` (wake all) when waiters wait on *different* predicates
+(e.g., readers and writers on one CV) or when one state change could satisfy several — otherwise you
+risk waking the "wrong" single waiter and stalling. Broadcast is safe-but-can-cause a **thundering
+herd** (all wake, contend for the mutex, most re-sleep); prefer `signal` or separate CVs when you can.
+
+<KnowledgeCheck
+  id="cv-mesa"
+  type="mcq"
+  prompt="Real condition variables use Mesa semantics. What does that imply for waiters?"
+  options={[
+    "The predicate is guaranteed true on wake, so an if is fine",
+    "A signaled waiter only becomes runnable and re-competes for the mutex, so the predicate may be false on wake — you must re-check in a while loop",
+    "Signaling transfers the CPU directly to the waiter",
+    "Waiters never need the mutex"
+  ]}
+  answer={1}
+  explanation="Under Mesa semantics signaling doesn't hand off atomically; the woken thread races for the lock and may find the condition changed, which is exactly why you loop on the predicate."
+/>
+
 ## Recap
 
 - Condition variables let a thread sleep until a predicate holds, always paired with a mutex.

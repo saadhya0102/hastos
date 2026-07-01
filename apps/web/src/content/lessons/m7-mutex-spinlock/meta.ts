@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m7-concurrency",
   title: "Mutexes and Spinlocks",
   order: 1,
-  estMinutes: 28,
+  estMinutes: 36,
   objectives: [
     "Define the critical section and mutual exclusion",
     "Use a pthread mutex correctly",

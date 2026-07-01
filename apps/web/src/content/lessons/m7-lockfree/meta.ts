@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m7-concurrency",
   title: "Lock-Free Programming and the ABA Problem",
   order: 6,
-  estMinutes: 32,
+  estMinutes: 40,
   objectives: [
     "Define lock-free and its progress guarantees",
     "Build a CAS loop and a Treiber stack",

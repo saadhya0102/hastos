@@ -114,6 +114,37 @@ important atomic to understand.
   explanation="CAS conditionally and atomically updates a location if it matches the expected value — the basis of locks and lock-free algorithms."
 />
 
+## Better spinlocks, and how real mutexes work
+
+A naive test-and-set spinlock has a hidden cost: every spinning core keeps **writing** the lock line
+(each `test_and_set` is a write), so the cache line ping-pongs between cores (recall false sharing).
+Fixes:
+
+- **TTAS (test-and-test-and-set)**: spin on a *read* (`while (flag) ;`) and only attempt the atomic
+  write when it looks free. Reads let cores share the line (MESI Shared state), cutting coherence
+  traffic dramatically.
+- **Ticket / MCS / CLH locks**: give waiters a FIFO order (fairness) and have each spin on its *own*
+  cache line, eliminating the ping-pong — what scalable kernels use under contention.
+
+Real **mutexes** combine spinning and blocking via a **futex** (fast userspace mutex): the
+uncontended lock/unlock is a single atomic in **user space** (no syscall at all); only when a thread
+actually needs to *wait* does it call into the kernel (`futex(FUTEX_WAIT)`) to sleep, and the
+releaser wakes it (`FUTEX_WAKE`). Fast path free, slow path correct.
+
+<KnowledgeCheck
+  id="ms-ttas"
+  type="mcq"
+  prompt="Why does a test-and-test-and-set (TTAS) spinlock scale better than plain test-and-set?"
+  options={[
+    "It uses less memory",
+    "It spins on a read (shareable line) and only writes when the lock looks free, avoiding constant cache-line invalidations from every spinner writing",
+    "It never spins",
+    "It disables the cache"
+  ]}
+  answer={1}
+  explanation="Plain TAS writes the line every iteration, bouncing it between cores; TTAS spins on reads (line stays Shared) and attempts the atomic write only when it might succeed."
+/>
+
 ## Spin or block? The trade-off
 
 - **Spinlocks** win when critical sections are **very short** and contention is **low**: spinning

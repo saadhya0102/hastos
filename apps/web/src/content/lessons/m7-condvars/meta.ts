@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m7-concurrency",
   title: "Condition Variables and Semaphores",
   order: 2,
-  estMinutes: 28,
+  estMinutes: 36,
   objectives: [
     "Use condition variables to wait for a predicate",
     "Explain why you must wait in a loop (spurious wakeups, lost wakeups)",

@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m7-concurrency",
   title: "Producer/Consumer and Thread Pools",
   order: 3,
-  estMinutes: 24,
+  estMinutes: 32,
   objectives: [
     "Apply the producer/consumer pattern to decouple work",
     "Design a thread pool with a shared work queue",

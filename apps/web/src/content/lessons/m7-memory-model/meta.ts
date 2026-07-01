@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m7-concurrency",
   title: "Memory Models and Ordering",
   order: 5,
-  estMinutes: 28,
+  estMinutes: 36,
   objectives: [
     "Explain why compilers and CPUs reorder memory operations",
     "Define sequential consistency as the intuitive baseline",

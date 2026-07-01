@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m7-concurrency",
   title: "Threads, Shared State, and Data Races",
   order: 0,
-  estMinutes: 26,
+  estMinutes: 34,
   objectives: [
     "Create threads and share memory between them",
     "Define a data race and why it is undefined behavior",

@@ -92,6 +92,34 @@ which risks livelock); or reduce locking (coarser locks, lock-free structures).
   explanation="A global lock ordering ensures no cyclic wait can form, eliminating deadlock by breaking the circular-wait condition."
 />
 
+## The other strategies: detection, avoidance, recovery
+
+Prevention (breaking a condition up front) is the common approach, but there are three others:
+
+- **Detection + recovery**: allow deadlocks, then find them. Model resources as a **wait-for graph**
+  (edge X→Y = "X waits for a lock held by Y") and periodically look for a **cycle** — a cycle *is* a
+  deadlock. Recover by aborting/rolling back a "victim" to break the cycle. This is exactly what
+  databases do: they detect deadlocked transactions and abort one with a deadlock error.
+- **Avoidance**: use advance knowledge of maximum resource needs to only grant a request if the
+  system stays in a **safe state** (a state from which all threads can still finish) — the **Banker's
+  algorithm**. Elegant but requires knowing max claims up front, so it's rare in practice.
+- **The ostrich algorithm**: ignore it and reboot if it happens — sometimes rational when deadlocks
+  are rare and prevention is costly.
+
+<KnowledgeCheck
+  id="dl-detect"
+  type="mcq"
+  prompt="How does deadlock *detection* identify a deadlock at runtime?"
+  options={[
+    "It counts the number of locks",
+    "It looks for a cycle in the wait-for graph (a thread waiting on a lock held by a thread that waits on it, transitively)",
+    "It measures CPU usage",
+    "It checks the stack size"
+  ]}
+  answer={1}
+  explanation="A cycle in the wait-for graph means a set of threads each block on a resource held by the next — a deadlock; recovery aborts a victim to break the cycle."
+/>
+
 ## Deadlock vs. livelock vs. starvation
 
 - **Deadlock** — threads blocked forever, no progress, no CPU used.

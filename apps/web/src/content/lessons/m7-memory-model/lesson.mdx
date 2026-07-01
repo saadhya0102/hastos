@@ -128,6 +128,37 @@ Using relaxed where you actually need ordering is a classic, devastating bug.
   explanation="Relaxed gives atomicity without ordering — fine for standalone counters, wrong wherever you must order other memory (use acquire/release/seq_cst there)."
 />
 
+## Hardware models: x86 vs ARM, and fences
+
+The *same* C code can behave differently per CPU because architectures have different **hardware
+memory models**:
+
+- **x86-64 is TSO (Total Store Order)** — relatively strong. The only reordering it allows is
+  **StoreLoad**: a later load can appear to execute before an earlier store to a *different* address
+  (because stores sit in a per-core **store buffer** before draining to cache). Loads aren't reordered
+  after loads, etc. So acquire/release are nearly free on x86 (often plain moves), but a full barrier
+  (`mfence` / a `lock`-prefixed op) is needed to stop StoreLoad — the reason `seq_cst` costs more.
+- **ARM/POWER are weakly ordered** — almost anything can reorder unless you add barriers. Code that
+  "happened to work" on x86 often breaks on ARM (e.g., Apple Silicon), exposing missing ordering.
+
+This is why you express ordering with the **portable C11 atomic orderings** (which the compiler lowers
+to the right fences per target) instead of assuming a CPU. `atomic_thread_fence(memory_order_seq_cst)`
+inserts a standalone barrier when you need one.
+
+<KnowledgeCheck
+  id="mm-tso"
+  type="mcq"
+  prompt="On x86-64 (TSO), which reordering is still allowed and thus needs a full barrier to prevent?"
+  options={[
+    "LoadLoad",
+    "StoreLoad (a later load bypassing an earlier store to a different address, due to the store buffer)",
+    "None; x86 never reorders",
+    "StoreStore"
+  ]}
+  answer={1}
+  explanation="x86 TSO permits only StoreLoad reordering (stores linger in the store buffer); preventing it requires an mfence/locked op, which is why seq_cst is costlier than acquire/release there."
+/>
+
 ## Practical guidance
 
 - **Default to `seq_cst`** until profiling shows it matters.

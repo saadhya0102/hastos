@@ -142,14 +142,45 @@ void *inc(void *_) {
 ```
 
 Atomics are the building block for locks and lock-free data structures (later lessons). Tools like
-**ThreadSanitizer (TSan)** detect data races at runtime — HastOS uses TSan to grade concurrency
-problems, so a racy solution is caught, not silently "lucky."
+**ThreadSanitizer (TSan)** detect data races at runtime; when the grader supports it (a Judge0
+backend), HastOS runs concurrency submissions under TSan so a racy solution is caught rather than
+silently "lucky." (The lightweight Piston grader can't inject TSan, so it relies on stress-test
+output instead — but a race is still a bug either way.)
 
 <Aside kind="insight">
 The mental shift for concurrency: correctness can't depend on timing. If two threads *can*
 interleave badly, eventually they *will*. Reason about all interleavings, or make operations
 atomic/synchronized so bad interleavings are impossible.
 </Aside>
+
+## Data race vs. race condition
+
+These are often conflated but distinct — a classic interview clarification:
+
+- A **data race** is the specific, *language-level* UB: two threads access the same memory
+  concurrently, at least one writes, with no synchronization. It's mechanically definable (and TSan
+  detects it).
+- A **race condition** is a *logic* bug where the outcome wrongly depends on timing/ordering — even if
+  every individual access is properly synchronized.
+
+You can have one without the other. A classic race condition with **no** data race is
+**check-then-act**: `if (balance >= amount) balance -= amount;` where each access is atomic, but two
+threads both pass the check before either subtracts, overdrawing the account. The fix isn't more
+atomics on individual reads — it's making the *whole* check-and-act one critical section.
+
+<KnowledgeCheck
+  id="tr-racecond"
+  type="mcq"
+  prompt="Two threads run `if (seats > 0) seats--;` where reads/writes of `seats` are individually atomic. Both sell the last seat. What kind of bug is this?"
+  options={[
+    "A data race (fixed by making seats atomic)",
+    "A race condition: the check-then-act isn't atomic as a unit, so the whole sequence needs a lock/critical section",
+    "Not a bug",
+    "A deadlock"
+  ]}
+  answer={1}
+  explanation="Each access may be atomic (no data race), yet the compound check-then-act can interleave — a race condition fixed by making the whole operation atomic (e.g., a lock or CAS)."
+/>
 
 ## Recap
 
