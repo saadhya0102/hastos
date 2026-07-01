@@ -1308,6 +1308,93 @@ int main(void) {
 #include "impl.c"
 `;
 
+function bitDriver(header: string, body: string): string {
+  return `#include "${header}"
+#include <stdio.h>
+#include <stdint.h>
+
+static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)
+
+int main(void) {
+${body}
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+
+#include "impl.c"
+`;
+}
+
+const REVBITS_HEADER = `#ifndef REVBITS_H
+#define REVBITS_H
+#include <stdint.h>
+uint32_t reverse_bits(uint32_t x);
+#endif
+`;
+const REVBITS_DRIVER = bitDriver("revbits.h",
+  '  CHECK("zero", reverse_bits(0u) == 0u, "0 reverses to 0");\n' +
+  '  CHECK("one", reverse_bits(1u) == 0x80000000u, "1 reverses to 0x80000000");\n' +
+  '  CHECK("top_bit", reverse_bits(0x80000000u) == 1u, "0x80000000 reverses to 1");\n' +
+  '  CHECK("all_ones", reverse_bits(0xFFFFFFFFu) == 0xFFFFFFFFu, "all ones reverses to all ones");\n' +
+  '  CHECK("two", reverse_bits(2u) == 0x40000000u, "0x2 reverses to 0x40000000");');
+
+const PARITY_HEADER = `#ifndef PARITY_H
+#define PARITY_H
+#include <stdint.h>
+int parity(uint32_t x);
+#endif
+`;
+const PARITY_DRIVER = bitDriver("parity.h",
+  '  CHECK("zero", parity(0u) == 0, "0 has even parity");\n' +
+  '  CHECK("one", parity(1u) == 1, "1 has odd parity");\n' +
+  '  CHECK("three_bits", parity(0xBu) == 1, "0b1011 has 3 set bits (odd)");\n' +
+  '  CHECK("seven", parity(7u) == 1, "0b111 has 3 set bits (odd)");\n' +
+  '  CHECK("all_ones", parity(0xFFFFFFFFu) == 0, "32 set bits is even");');
+
+const CLZ_HEADER = `#ifndef CLZ_H
+#define CLZ_H
+#include <stdint.h>
+int count_leading_zeros(uint32_t x);
+#endif
+`;
+const CLZ_DRIVER = bitDriver("clz.h",
+  '  CHECK("one", count_leading_zeros(1u) == 31, "clz(1) should be 31");\n' +
+  '  CHECK("zero", count_leading_zeros(0u) == 32, "clz(0) should be 32");\n' +
+  '  CHECK("top_bit", count_leading_zeros(0x80000000u) == 0, "clz(0x80000000) should be 0");\n' +
+  '  CHECK("byte", count_leading_zeros(0xFFu) == 24, "clz(0xFF) should be 24");\n' +
+  '  CHECK("all_ones", count_leading_zeros(0xFFFFFFFFu) == 0, "clz(all ones) should be 0");');
+
+const NEXTPOW2_HEADER = `#ifndef NEXTPOW2_H
+#define NEXTPOW2_H
+#include <stdint.h>
+uint32_t next_pow2(uint32_t x);
+#endif
+`;
+const NEXTPOW2_DRIVER = bitDriver("nextpow2.h",
+  '  CHECK("five", next_pow2(5u) == 8u, "next_pow2(5) should be 8");\n' +
+  '  CHECK("zero", next_pow2(0u) == 1u, "next_pow2(0) should be 1");\n' +
+  '  CHECK("exact", next_pow2(8u) == 8u, "next_pow2(8) should be 8");\n' +
+  '  CHECK("seventeen", next_pow2(17u) == 32u, "next_pow2(17) should be 32");\n' +
+  '  CHECK("large", next_pow2(0x40000000u) == 0x40000000u, "exact large power stays");');
+
+const GRAY_HEADER = `#ifndef GRAY_H
+#define GRAY_H
+#include <stdint.h>
+uint32_t binary_to_gray(uint32_t x);
+#endif
+`;
+const GRAY_DRIVER = bitDriver("gray.h",
+  '  CHECK("two", binary_to_gray(2u) == 3u, "gray(2) should be 3");\n' +
+  '  CHECK("zero", binary_to_gray(0u) == 0u, "gray(0) should be 0");\n' +
+  '  CHECK("one", binary_to_gray(1u) == 1u, "gray(1) should be 1");\n' +
+  '  CHECK("three", binary_to_gray(3u) == 2u, "gray(3) should be 2");\n' +
+  '  CHECK("four", binary_to_gray(4u) == 6u, "gray(4) should be 6");');
+
 const PROBLEMS: Record<string, HarnessProblem> = {
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
@@ -1927,6 +2014,47 @@ const PROBLEMS: Record<string, HarnessProblem> = {
       collision: "hidden",
       delete_probe: "hidden",
     },
+  },
+
+  "m1-p-reverse-bits": {
+    id: "m1-p-reverse-bits", languageId: 50,
+    header: { name: "revbits.h", content: REVBITS_HEADER }, driver: REVBITS_DRIVER,
+    implName: "impl.c", learnerFileName: "revbits.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2, wallTimeLimit: 5, memoryLimitKb: 65536,
+    testVisibility: { zero: "sample", one: "hidden", top_bit: "hidden", all_ones: "hidden", two: "hidden" },
+  },
+  "m1-p-parity": {
+    id: "m1-p-parity", languageId: 50,
+    header: { name: "parity.h", content: PARITY_HEADER }, driver: PARITY_DRIVER,
+    implName: "impl.c", learnerFileName: "parity.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2, wallTimeLimit: 5, memoryLimitKb: 65536,
+    testVisibility: { zero: "sample", one: "hidden", three_bits: "hidden", seven: "hidden", all_ones: "hidden" },
+  },
+  "m1-p-clz": {
+    id: "m1-p-clz", languageId: 50,
+    header: { name: "clz.h", content: CLZ_HEADER }, driver: CLZ_DRIVER,
+    implName: "impl.c", learnerFileName: "clz.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2, wallTimeLimit: 5, memoryLimitKb: 65536,
+    testVisibility: { one: "sample", zero: "hidden", top_bit: "hidden", byte: "hidden", all_ones: "hidden" },
+  },
+  "m1-p-next-pow2": {
+    id: "m1-p-next-pow2", languageId: 50,
+    header: { name: "nextpow2.h", content: NEXTPOW2_HEADER }, driver: NEXTPOW2_DRIVER,
+    implName: "impl.c", learnerFileName: "nextpow2.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2, wallTimeLimit: 5, memoryLimitKb: 65536,
+    testVisibility: { five: "sample", zero: "hidden", exact: "hidden", seventeen: "hidden", large: "hidden" },
+  },
+  "m1-p-binary-to-gray": {
+    id: "m1-p-binary-to-gray", languageId: 50,
+    header: { name: "gray.h", content: GRAY_HEADER }, driver: GRAY_DRIVER,
+    implName: "impl.c", learnerFileName: "gray.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2, wallTimeLimit: 5, memoryLimitKb: 65536,
+    testVisibility: { two: "sample", zero: "hidden", one: "hidden", three: "hidden", four: "hidden" },
   },
 };
 

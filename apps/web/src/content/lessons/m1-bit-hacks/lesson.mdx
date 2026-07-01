@@ -1,0 +1,152 @@
+# Bit Hacks: Reverse, Parity, CLZ, and Powers of Two
+
+Beyond set/clear/toggle, a handful of **bit hacks** show up constantly in systems code, interviews,
+and CS:APP's DataLab: reversing bits, computing parity, counting leading zeros, and rounding to a
+power of two. Each is a small puzzle with a slick solution — and each maps to a real hardware
+instruction or systems use.
+
+## Reversing bits
+
+Reversing the bit order of a word (bit 0 ↔ bit 31, etc.) appears in DSP (FFT bit-reversal
+permutation), cryptography, and some hardware protocols. The straightforward method walks each bit:
+
+```c
+uint32_t reverse_bits(uint32_t x) {
+  uint32_t r = 0;
+  for (int i = 0; i < 32; i++) { r = (r << 1) | (x & 1u); x >>= 1; }
+  return r;
+}
+```
+
+A faster approach swaps bit *groups* (nibbles, bytes, halves) in log steps — the classic
+"divide-and-conquer" bit reversal — but the loop version is perfectly clear for learning.
+
+<KnowledgeCheck
+  id="bh-rev"
+  type="mcq"
+  prompt="After reverse_bits, where does the original bit 0 (LSB) end up?"
+  options={["Still bit 0", "Bit 31 (the MSB)", "It is cleared", "Bit 16"]}
+  answer={1}
+  explanation="Reversal maps bit i to bit 31-i, so the LSB (bit 0) becomes the MSB (bit 31)."
+/>
+
+## Parity
+
+**Parity** is the XOR of all bits: 1 if the number of set bits is odd, else 0. It's the basis of
+simple error detection (parity bits) and relates to popcount mod 2.
+
+```c
+int parity(uint32_t x) {
+  int p = 0;
+  while (x) { p ^= 1; x &= (x - 1); }  // clear lowest set bit each step
+  return p;
+}
+```
+
+A branch-free fold (`x ^= x >> 16; x ^= x >> 8; ...`) computes it in log steps — the same
+divide-and-conquer idea.
+
+<KnowledgeCheck
+  id="bh-parity"
+  type="mcq"
+  prompt="What is the parity of 0b1011 (three set bits)?"
+  options={["0", "1", "3", "It's undefined"]}
+  answer={1}
+  explanation="Three set bits is odd, so parity = 1 (the XOR of all bits)."
+/>
+
+## Counting leading zeros (CLZ)
+
+**CLZ** counts the zero bits before the highest set bit — e.g., `clz(1) = 31`, `clz(0x80000000) =
+0`. It's how you compute `floor(log2(x))` (= `31 - clz(x)`), size buckets in allocators, and
+normalize floats. Most CPUs have a dedicated `lzcnt`/`clz` instruction; `__builtin_clz` maps to it.
+
+```c
+int count_leading_zeros(uint32_t x) {
+  if (x == 0) return 32;
+  int n = 0;
+  while ((x & 0x80000000u) == 0) { n++; x <<= 1; }
+  return n;
+}
+```
+
+<KnowledgeCheck
+  id="bh-clz"
+  type="mcq"
+  prompt="How do you get floor(log2(x)) for x > 0 from count_leading_zeros?"
+  options={[
+    "clz(x)",
+    "31 - clz(x)",
+    "32 - clz(x)",
+    "clz(x) + 1"
+  ]}
+  answer={1}
+  explanation="The highest set bit is at position 31 - clz(x), which equals floor(log2(x))."
+/>
+
+## Rounding up to a power of two
+
+Allocators and hash tables love power-of-two sizes (so they can mask instead of mod — recall the
+ring buffer). To round `x` **up** to the next power of two, the "smear the bits down" trick fills all
+bits below the top set bit, then adds one:
+
+```c
+uint32_t next_pow2(uint32_t x) {
+  if (x <= 1) return 1;
+  x--;                      // handle exact powers of two
+  x |= x >> 1;  x |= x >> 2;  x |= x >> 4;
+  x |= x >> 8;  x |= x >> 16;   // now x is all-ones up to the top bit
+  return x + 1;
+}
+```
+
+Alternatively, `1u << (32 - clz(x - 1))` using CLZ. Either way you get the smallest power of two
+≥ x.
+
+<KnowledgeCheck
+  id="bh-pow2"
+  type="mcq"
+  prompt="What does next_pow2(5) return?"
+  options={["4", "5", "8", "16"]}
+  answer={2}
+  explanation="The smallest power of two >= 5 is 8."
+/>
+
+## Gray code
+
+**Gray code** orders numbers so that consecutive values differ by exactly **one bit** — used in
+rotary encoders, error correction, and Karnaugh maps to avoid glitches during transitions. Binary
+→ Gray is a one-liner:
+
+```c
+uint32_t binary_to_gray(uint32_t x) { return x ^ (x >> 1); }
+```
+
+For example, 0,1,2,3 → 0,1,3,2 (each step flips one bit). The inverse (Gray → binary) XORs down the
+shifted values.
+
+<KnowledgeCheck
+  id="bh-gray"
+  type="mcq"
+  prompt="What is the defining property of Gray code?"
+  options={[
+    "Values are sorted descending",
+    "Consecutive values differ by exactly one bit",
+    "All values are powers of two",
+    "It uses fewer bits"
+  ]}
+  answer={1}
+  explanation="Gray code sequences change only one bit between consecutive values, avoiding multi-bit transition glitches."
+/>
+
+## Recap
+
+- Reverse bits (bit i ↔ 31-i); parity = XOR of all bits (odd/even set-bit count).
+- CLZ counts leading zeros; `floor(log2(x)) = 31 - clz(x)`.
+- Round up to a power of two by smearing bits down then `+1` (or via CLZ).
+- Gray code (`x ^ (x>>1)`) makes consecutive values differ by one bit.
+
+## Practice
+
+Five DataLab-style problems below: **reverse bits, parity, count leading zeros, next power of two,
+and binary-to-Gray**. Great warm-ups and interview staples.

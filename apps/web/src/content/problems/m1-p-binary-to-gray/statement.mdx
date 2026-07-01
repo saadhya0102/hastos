@@ -1,0 +1,13 @@
+Convert a binary value to its **Gray code**, where consecutive integers differ by exactly one bit
+(used in rotary encoders and to avoid transition glitches).
+
+## Your task
+
+```c
+uint32_t binary_to_gray(uint32_t x);
+```
+
+## Hint
+
+It's a one-liner: `return x ^ (x >> 1);`. Check that `0,1,2,3` map to `0,1,3,2`. Use **Run** then
+**Submit**.

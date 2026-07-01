@@ -1,0 +1,15 @@
+Reverse the 32 bits of an unsigned integer: bit `i` moves to position `31 - i`. Used in FFT
+bit-reversal and various protocols, and a classic warm-up.
+
+## Your task
+
+```c
+uint32_t reverse_bits(uint32_t x);
+```
+
+## Hints (no spoilers)
+
+- Loop 32 times: `r = (r << 1) | (x & 1u); x >>= 1;`
+- So `reverse_bits(1)` = `0x80000000`, and `reverse_bits(0x80000000)` = `1`.
+
+Use **Run** then **Submit**.

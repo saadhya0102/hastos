@@ -1,0 +1,16 @@
+Count the **leading zeros** of a 32-bit value — the number of 0 bits above the highest set bit.
+This underlies `floor(log2(x))`, allocator size classes, and float normalization; CPUs have a
+dedicated `lzcnt` instruction.
+
+## Your task
+
+```c
+int count_leading_zeros(uint32_t x);   // clz(0) == 32; do not use __builtin_clz
+```
+
+## Hints (no spoilers)
+
+- If `x == 0`, return 32. Otherwise count how many top bits are 0: e.g., shift left until the MSB
+  (`x & 0x80000000`) is set, counting steps.
+
+`clz(1)` = 31, `clz(0x80000000)` = 0, `clz(0xFF)` = 24. Use **Run** then **Submit**.

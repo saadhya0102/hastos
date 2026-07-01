@@ -1,0 +1,16 @@
+Round a value **up to the next power of two** (≥ x). Hash tables and allocators use power-of-two
+sizes so they can mask (`& (n-1)`) instead of the slower modulo.
+
+## Your task
+
+```c
+uint32_t next_pow2(uint32_t x);   // 0 -> 1; exact powers return themselves; assume x <= 0x80000000
+```
+
+## Hints (no spoilers)
+
+- Handle `x <= 1` → return 1.
+- Otherwise `x--` (so exact powers stay put), then "smear" the top bit downward:
+  `x |= x>>1; x |= x>>2; x |= x>>4; x |= x>>8; x |= x>>16;` and return `x + 1`.
+
+`next_pow2(5)` = 8, `next_pow2(8)` = 8, `next_pow2(17)` = 32. Use **Run** then **Submit**.
