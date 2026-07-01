@@ -1,17 +1,41 @@
 # CPU Scheduling: FIFO, SJF, and Round Robin
 
-The scheduler decides **which ready process runs next**. Different policies optimize different
-metrics, and the trade-offs are a favorite interview and exam topic. We'll build up from the
-simplest policy to the one your laptop actually uses ideas from.
+The scheduler decides **which ready process runs next**. On a single core only one thread runs at a
+time, so whenever the running job blocks, exits, or its time slice ends, the OS must choose a
+successor from the **ready queue**. Different policies optimize different metrics, and the trade-offs
+between them are a favorite interview and exam topic. We'll build up from the simplest policy to the
+ideas your laptop's scheduler actually uses.
 
-## Two metrics
+## Workload assumptions (and why we drop them)
 
-- **Turnaround time** = completion time − arrival time. How long from submission to done. Good for
-  **batch** throughput.
-- **Response time** = first-run time − arrival time. How long until the job *first* gets the CPU.
-  Good for **interactivity** (you want a keystroke handled quickly).
+Classic scheduling analysis starts with deliberately unrealistic assumptions, then removes them one
+at a time. This is a great mental scaffold:
 
-These often conflict: optimizing turnaround can hurt response time and vice versa.
+1. Each job runs for the same amount of time. *(dropped in SJF)*
+2. All jobs arrive at the same time. *(dropped in STCF)*
+3. Once started, each job runs to completion. *(dropped by preemption)*
+4. All jobs only use the CPU (no I/O). *(dropped when we overlap I/O)*
+5. The run-time of each job is known. *(dropped in MLFQ — the big one)*
+
+The last assumption is the killer: a real scheduler **cannot see the future**, so it can't literally
+run the shortest job first. Everything after SJF is about *approximating* the ideal without an
+oracle.
+
+## The metrics
+
+We judge a policy by a few numbers. Let a job arrive at time `t_arrival`, first get the CPU at
+`t_first`, and finish at `t_completion`.
+
+- **Turnaround time** = `t_completion − t_arrival`. Submission to done — a **batch/throughput**
+  metric.
+- **Response time** = `t_first − t_arrival`. How long until the job *first* runs — an
+  **interactivity** metric (you want a keystroke handled quickly).
+- **Waiting time** = `turnaround − CPU_burst`. Total time sitting in the ready queue.
+- **Throughput** = jobs completed per unit time. **CPU utilization** = fraction of time the CPU is
+  doing useful work.
+
+Turnaround and response time often **conflict**: policies that finish jobs fast (great turnaround)
+tend to make some jobs wait a long time for their first turn (bad response), and vice versa.
 
 <KnowledgeCheck
   id="sb-metrics"
@@ -22,15 +46,27 @@ These often conflict: optimizing turnaround can hurt response time and vice vers
   explanation="Response time = first-run minus arrival; low response time means snappy interaction."
 />
 
+<Aside kind="note">
+Reading Gantt charts: each row of `#` marks the CPU running a particular job over time. The number
+under the last column of a job's run is its completion time, from which we compute turnaround.
+</Aside>
+
 ## FIFO (First-In, First-Out)
 
-Run jobs in arrival order, to completion, non-preemptively. Simple and fair-ish, but suffers the
-**convoy effect**: a long job at the front makes short jobs behind it wait, inflating average
-turnaround.
+Run jobs in arrival order, to completion, **non-preemptively**. Simple, and fair in the "first come,
+first served" sense — but it suffers the **convoy effect**: a long job at the front makes short jobs
+behind it wait, inflating average turnaround.
 
 ```
-Jobs (arrive ~0): A=100, B=10, C=10
-FIFO order A,B,C: completions 100, 110, 120 -> avg turnaround = (100+110+120)/3 = 110
+Jobs (all arrive ~0):  A = 100,  B = 10,  C = 10
+
+Gantt:
+A: ############################################  (0 .. 100)
+B:                                             ## (100 .. 110)
+C:                                               ## (110 .. 120)
+
+completions:  A=100,  B=110,  C=120
+avg turnaround = (100 + 110 + 120) / 3 = 110
 ```
 
 If B and C had gone first, the average would plummet — motivating SJF.
@@ -51,15 +87,46 @@ If B and C had gone first, the average would plummet — motivating SJF.
 
 ## SJF / STCF (Shortest Job First / Shortest Time-to-Completion First)
 
-**SJF** runs the shortest job first (non-preemptive). For jobs arriving together, SJF is
-**optimal for average turnaround**. **STCF** is the preemptive version: if a shorter job arrives,
-preempt the running one.
+**SJF** runs the shortest job first (non-preemptive). For jobs arriving **together**, SJF is
+**provably optimal for average turnaround**. **STCF** (a.k.a. PSJF) is the preemptive version: when a
+shorter job arrives, preempt the running one.
 
 ```
-A=100, B=10, C=10 with SJF order B,C,A: completions 10, 20, 120 -> avg = (10+20+120)/3 = 50
+A = 100, B = 10, C = 10, all arrive ~0
+
+SJF order B, C, A:
+B: ##                     (0 .. 10)
+C:   ##                   (10 .. 20)
+A:     ############...### (20 .. 120)
+
+completions: B=10, C=20, A=120  ->  avg = (10 + 20 + 120) / 3 = 50
 ```
 
-The catch: it needs to **know job lengths** in advance (rarely true), and long jobs can **starve**
+That's 110 → 50 just by reordering. Now suppose the long job A arrives first and B, C arrive at
+t=10. Non-preemptive SJF is stuck running A to completion (convoy again). **STCF** fixes it by
+preempting A when the shorter B, C show up:
+
+```
+A arrives t=0 (len 100); B, C arrive t=10 (len 10 each)
+
+STCF:
+A: ##########            (0 .. 10)         <- preempted when B arrives
+B:           ##          (10 .. 20)
+C:             ##        (20 .. 30)
+A:               ####... (30 .. 120)       <- resumes to completion
+
+turnaround: B = 20-10 = 10, C = 30-10 = 20, A = 120-0 = 120  ->  avg = 50
+```
+
+### Why is SJF optimal? (exchange argument)
+
+Suppose an optimal schedule ran a **longer** job `L` immediately before a **shorter** job `S` (both
+ready). Swap them. Every other job's completion time is unchanged, `S` now finishes earlier, and `L`
+finishes no later than `S` did before — so total completion time cannot increase. Repeat the swaps
+until jobs are in shortest-first order: SJF. Hence SJF minimizes average turnaround for a batch that
+arrives together.
+
+The catch: SJF needs to **know job lengths** in advance (rarely true), and long jobs can **starve**
 if short ones keep arriving.
 
 <KnowledgeCheck
@@ -76,18 +143,54 @@ if short ones keep arriving.
   explanation="Completing short jobs early lowers the total (and thus average) completion time — the exchange argument behind SJF's optimality."
 />
 
+<KnowledgeCheck
+  id="sb-stcf-num"
+  type="numeric"
+  prompt="Jobs: A len 6 arrives t=0; B len 2 arrives t=1. Under STCF, what is B's turnaround time?"
+  answer={2}
+  explanation="At t=1 B (2) is shorter than A's remaining (5), so A is preempted. B runs t=1..3, completes at 3. Turnaround = 3 - 1 = 2."
+/>
+
 ## Round Robin (RR)
 
-For good **response time**, RR gives each job a small **time quantum**, cycling through the ready
-queue. No job waits long for its first turn, so response time is excellent — at the cost of more
-context switches and worse average turnaround (every job finishes later because they share).
+SJF/STCF are great for turnaround but terrible for **response time**: a job that arrives late waits
+for everything shorter first. For interactivity we want RR, which gives each job a small **time
+quantum** and cycles through the ready queue. No job waits long for its first turn, so response time
+is excellent — at the cost of more context switches and worse average turnaround (every job finishes
+later because they take turns).
 
 ```
-A=B=C=5, quantum=1: they interleave; all finish near the end -> good response, worse turnaround
+A = B = C = 5, quantum = 1
+
+Gantt (round-robin, 1 tick each):
+A B C A B C A B C A B C A B C
+completions: A=13, B=14, C=15   (roughly — they all finish near the end)
+response times: A=0, B=1, C=2   (excellent!)
 ```
 
-The **quantum trade-off**: too small → responsive but high context-switch overhead; too large →
-degrades toward FIFO (poor response). Real systems pick a few milliseconds.
+### The quantum trade-off
+
+- **Too small** → responsive, but context-switch overhead dominates (each switch costs ~µs of saved
+  registers + polluted caches/TLB).
+- **Too large** → degrades toward FIFO: the last job in the queue waits a long time for its first
+  turn (poor response).
+
+With `N` jobs and quantum `q` (ignoring switch cost), the worst-case response time is about
+`(N−1)·q`. Real systems pick a few milliseconds — big enough that switch overhead is a small
+fraction, small enough that response stays snappy.
+
+<Aside kind="pitfall">
+Context switches aren't free even when the quantum is "spent productively." Beyond saving/restoring
+registers, the new job runs with **cold caches and TLB**, so its first slice is slower. Shrinking the
+quantum multiplies this hidden cost.
+</Aside>
+
+```
+Overhead example: quantum = 10ms, switch cost = 1ms
+  -> ~9% of CPU time is pure overhead (1 / (10+1)).
+quantum = 100ms, switch cost = 1ms
+  -> ~1% overhead, but response time for the Nth job grows ~10x.
+```
 
 <KnowledgeCheck
   id="sb-rr"
@@ -103,13 +206,55 @@ degrades toward FIFO (poor response). Real systems pick a few milliseconds.
   explanation="Smaller quanta cycle the queue faster (better response) but switch more often (overhead); too large approaches FIFO."
 />
 
+## Overlapping I/O
+
+Drop the "CPU only" assumption. When a job issues I/O it **blocks** — the CPU would idle if we just
+waited. A good scheduler treats each CPU burst between I/O calls as its own mini-job and runs another
+ready job during the I/O. This **overlap** keeps both the CPU and the disk/network busy and is why
+interactive, I/O-bound jobs feel responsive: they run briefly, block, and are quickly rescheduled
+when their I/O completes.
+
+<Aside kind="insight">
+This is the seed of MLFQ's key heuristic: a job that repeatedly gives up the CPU before its quantum
+expires is probably interactive (I/O-bound) and should be kept at high priority; a job that always
+burns its whole quantum is probably CPU-bound and can be demoted.
+</Aside>
+
+## Priority scheduling and starvation
+
+Generalize SJF: give each job a **priority** and always run the highest-priority ready job
+(preemptive or not). Priorities can encode importance, deadlines, or an estimate of shortness.
+
+The danger is **starvation**: if high-priority jobs keep arriving, a low-priority job may *never*
+run. The classic fix is **aging** — gradually raise the priority of jobs that have waited a long
+time, guaranteeing they eventually run.
+
+<KnowledgeCheck
+  id="sb-aging"
+  type="mcq"
+  prompt="What problem does 'aging' solve in priority scheduling?"
+  options={[
+    "Context-switch overhead",
+    "Starvation of low-priority jobs",
+    "Cache pollution",
+    "The convoy effect"
+  ]}
+  answer={1}
+  explanation="Aging raises a waiting job's priority over time so it can't be starved indefinitely by a stream of higher-priority arrivals."
+/>
+
 ## No single winner
 
-- **FIFO**: simple; convoy effect.
-- **SJF/STCF**: optimal turnaround; needs job lengths; can starve long jobs.
-- **RR**: great response; worse turnaround; quantum tuning.
+| Policy    | Optimizes        | Needs             | Weakness                         |
+| --------- | ---------------- | ----------------- | -------------------------------- |
+| FIFO      | simplicity       | nothing           | convoy effect (bad turnaround)   |
+| SJF       | avg turnaround   | job lengths       | starvation; non-preemptive       |
+| STCF      | avg turnaround   | job lengths       | starvation; needs preemption     |
+| RR        | response time    | a quantum         | worse turnaround; switch overhead|
+| Priority  | importance/SJF   | priorities        | starvation (fix with aging)      |
 
-Real schedulers can't know job lengths and must balance both metrics — leading to **MLFQ**, next.
+Real schedulers can't know job lengths and must balance turnaround *and* response — leading to
+**MLFQ**, which *learns* which jobs are short/interactive by watching their behavior. That's next.
 
 ## Practice
 

@@ -2,7 +2,8 @@
 
 Instead of optimizing turnaround or response, **proportional-share** schedulers aim for
 **fairness**: each job should get a CPU share proportional to its assigned weight. This model
-underlies modern fair schedulers and resource-control systems (cgroups, container CPU limits).
+underlies modern fair schedulers and resource-control systems (cgroups, container CPU limits, VM
+vCPU shares).
 
 ## Lottery scheduling
 
@@ -16,8 +17,21 @@ Each tick: random number in [0,100); if < 75, run A, else run B.
 Over many ticks, A runs ~75% of the time, B ~25%.
 ```
 
-Lottery is simple, requires no global state, and degrades gracefully — but it's **probabilistic**,
-so short runs can deviate from the exact ratio.
+Lottery is simple, requires no global state, and degrades gracefully — but it's **probabilistic**, so
+short runs can deviate from the exact ratio (the law of large numbers only guarantees fairness *over
+many draws*).
+
+### Ticket mechanisms
+
+Lottery has some elegant tricks that make it composable:
+
+- **Ticket currency**: a user can hand out tickets in their own "currency" to their jobs; the system
+  converts each user's currency to global tickets by their global allocation. This lets users
+  subdivide *their* share without affecting others.
+- **Ticket transfer**: a client can temporarily hand its tickets to a server working on its behalf
+  (helps avoid priority-inversion-like effects).
+- **Ticket inflation**: in a cooperative (mutually trusting) group, a job can temporarily create more
+  tickets to grab CPU when it needs a burst — no communication required.
 
 <KnowledgeCheck
   id="ps-lottery"
@@ -41,10 +55,21 @@ job with the **lowest pass**, then add its stride to its pass. More tickets → 
 grows slower → runs more often. No randomness, exact proportions.
 
 ```
-A: tickets 100 -> stride 1;  B: tickets 50 -> stride 2
-passes start at 0. Run lowest pass, advance by stride:
-A(0)->A.pass=1; B(0)->B.pass=2; A(1)->2; A(2)... A runs ~2x as often as B.
+BIG = 100.  A: tickets 100 -> stride 1;  B: tickets 50 -> stride 2
+
+pass:      A   B     who runs (lowest pass), then advance its pass
+t0:        0   0     A (tie->A);  A.pass += 1
+t1:        1   0     B;           B.pass += 2
+t2:        1   2     A;           A.pass += 1
+t3:        2   2     A;           A.pass += 1
+t4:        3   2     B;           B.pass += 2
+...        A runs ~2x as often as B, exactly.
 ```
+
+The catch stride has that lottery avoids: **global per-job state** (the pass values). A subtle issue
+is a job that **joins late** — if you set its pass to 0 it would monopolize the CPU until it catches
+up. The fix: set a new job's pass to the current **minimum pass** (or global pass), so it starts
+"even" with everyone else. CFS uses exactly this idea.
 
 <KnowledgeCheck
   id="ps-stride"
@@ -60,24 +85,73 @@ A(0)->A.pass=1; B(0)->B.pass=2; A(1)->2; A(2)... A runs ~2x as often as B.
   explanation="Stride is deterministic: pick the minimum pass, advance it by the job's stride (smaller stride = more tickets = runs more)."
 />
 
-## Fairness over time
+<KnowledgeCheck
+  id="ps-join"
+  type="mcq"
+  prompt="Why set a newly-arriving stride job's pass to the current minimum pass rather than 0?"
+  options={[
+    "To give it lower priority",
+    "So it doesn't monopolize the CPU catching up from a pass of 0",
+    "To save memory",
+    "It doesn't matter"
+  ]}
+  answer={1}
+  explanation="A pass of 0 would be far below everyone else's, so the job would run continuously until its pass caught up — starving the others. Starting at the minimum keeps it fair."
+/>
 
-Proportional share guarantees fairness **in the long run**. Lottery approaches the target ratio
-statistically; stride hits it exactly. Modern Linux uses the **Completely Fair Scheduler (CFS)**,
-which is a proportional-share design tracking each task's accumulated virtual runtime and always
-running the one that's fallen furthest behind — essentially stride scheduling's idea generalized.
+## Linux CFS: proportional share in practice
+
+Modern Linux uses the **Completely Fair Scheduler (CFS)**, essentially stride's idea generalized and
+made efficient:
+
+- Each task accumulates **virtual runtime (`vruntime`)** as it runs. CFS always runs the task with
+  the **smallest `vruntime`** (it's fallen furthest behind) — the stride "lowest pass" rule.
+- **Weights from `nice`**: a task's `nice` value (−20…+19) maps to a weight; `vruntime` advances
+  *inversely* to weight, so higher-priority (more weight) tasks accumulate `vruntime` more slowly and
+  thus run more. Each nice level is ~1.25× CPU, so a difference of ~10 nice ≈ 10× the CPU share.
+- **Efficiency**: ready tasks live in a **red-black tree** keyed by `vruntime`, so "pick the min" and
+  reinsert are `O(log n)`.
+- **Tuning without fixed quanta**: `sched_latency` is the target period in which every runnable task
+  should run once; each task's slice ≈ `sched_latency × (weight / total_weight)`. A
+  `min_granularity` floor prevents slices from getting so tiny that context-switch overhead
+  dominates when there are many tasks. New/waking tasks get `vruntime` set near `min_vruntime` so
+  they don't unfairly surge (the "join late" fix again).
 
 <Aside kind="insight">
-Lottery vs. stride mirrors a common engineering choice: randomized (simple, stateless,
-approximate) vs. deterministic (exact, needs per-job state). Both achieve proportional fairness;
-pick based on whether you need exactness or simplicity.
+Lottery vs. stride mirrors a common engineering choice: randomized (simple, stateless, approximate)
+vs. deterministic (exact, needs per-job state). CFS chose the deterministic path — plus a balanced
+tree for scale — because a general-purpose OS wants predictable fairness.
 </Aside>
+
+## Where proportional share shows up
+
+- **Containers/cgroups**: `cpu.weight` (cgroup v2) is literally a proportional share of CPU among
+  cgroups; `cpu.max` adds a hard cap (bandwidth control).
+- **Hypervisors**: vCPU "shares"/"weights" divide physical CPUs among VMs.
+- **QoS systems**: weighted fair queueing in networking is the same math applied to link bandwidth.
+
+<KnowledgeCheck
+  id="ps-cfs"
+  type="mcq"
+  prompt="In CFS, which runnable task is chosen to run next?"
+  options={[
+    "The one with the largest vruntime",
+    "The one with the smallest vruntime (it has run the least, weighted)",
+    "A random one weighted by nice",
+    "The most recently created"
+  ]}
+  answer={1}
+  explanation="CFS runs the task that has accumulated the least virtual runtime, so every task converges to its weighted-fair share."
+/>
 
 ## Recap
 
 - Proportional-share targets fairness: CPU share ∝ assigned weight/tickets.
-- **Lottery**: random ticket draw — simple, stateless, probabilistic.
-- **Stride**: lowest-pass-runs, advance by stride — deterministic, exact.
-- Modern fair schedulers (Linux CFS) generalize the proportional-share idea via virtual runtime.
+- **Lottery**: random ticket draw — simple, stateless, probabilistic; supports currency/transfer/
+  inflation.
+- **Stride**: lowest-pass-runs, advance by stride — deterministic, exact; new jobs start at the min
+  pass.
+- **CFS** (Linux): smallest-`vruntime`-runs, weights from `nice`, red-black tree, `sched_latency` /
+  `min_granularity` tuning — proportional share at production scale.
 
 That wraps Module M8 — you can reason about every major CPU-scheduling policy and their trade-offs.

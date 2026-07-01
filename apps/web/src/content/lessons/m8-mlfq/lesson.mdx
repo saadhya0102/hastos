@@ -3,19 +3,22 @@
 SJF gives great turnaround but needs to know job lengths — impossible in practice. **MLFQ** is the
 clever workaround used by real schedulers: it *learns* a job's behavior from its past and uses that
 to approximate SJF, while still giving interactive jobs snappy response. It's the most important
-practical scheduler to understand.
+practical scheduler to understand, and variants have shipped in Solaris, older Windows NT, and
+FreeBSD.
 
 ## The idea: priority from observed behavior
 
-MLFQ maintains **multiple queues**, each at a different **priority level**. The scheduler always
-runs jobs from the highest-priority non-empty queue (Round Robin within a level). The trick is how
-jobs **move between levels** based on how they behave:
+MLFQ maintains **multiple queues**, each at a different **priority level**. The scheduler always runs
+jobs from the highest-priority non-empty queue (Round Robin within a level). The trick is how jobs
+**move between levels** based on how they behave:
 
 - A job that **uses its whole time slice** (CPU-bound) gets **demoted** to a lower priority.
 - A job that **gives up the CPU early** (I/O-bound / interactive) **stays high** priority.
 
-So interactive jobs (short CPU bursts) naturally float to the top and respond quickly, while
-CPU-hogs sink to the bottom — approximating "short jobs first" without ever being told the lengths.
+So interactive jobs (short CPU bursts) naturally float to the top and respond quickly, while CPU-hogs
+sink to the bottom — approximating "short jobs first" without ever being told the lengths. MLFQ is
+using the **past as a predictor of the future**: a job that has behaved interactively recently is
+likely to keep doing so.
 
 <KnowledgeCheck
   id="mlfq-idea"
@@ -33,11 +36,17 @@ CPU-hogs sink to the bottom — approximating "short jobs first" without ever be
 
 ## The core rules
 
-1. If priority(A) > priority(B), A runs.
-2. If equal priority, A and B run in Round Robin.
+The full rule set (OSTEP formulation):
+
+1. If priority(A) > priority(B), **A runs** (B doesn't).
+2. If priority(A) = priority(B), A and B run in **Round Robin** at that level.
 3. A job entering the system starts at the **highest** priority (optimistically assume it's short).
-4. Once a job uses up its time **allotment** at a level (across one or more slices), it's
-   **demoted** one level.
+4. Once a job uses up its total time **allotment** at a level (across one or more slices, regardless
+   of how many times it gave up the CPU), it is **demoted** one level.
+5. After some period `S`, **boost** every job back to the top priority.
+
+Rules 1–2 are the "how do we pick" rules; 3–4 are the "how do priorities change" rules; rule 5 is the
+anti-starvation safety net.
 
 <KnowledgeCheck
   id="mlfq-start"
@@ -48,16 +57,53 @@ CPU-hogs sink to the bottom — approximating "short jobs first" without ever be
   explanation="New jobs start at the top priority (optimistically treated as short/interactive) and are demoted only if they prove CPU-bound."
 />
 
-## Gaming and starvation — and the fix
+## A worked trace
 
-Two problems with the naive rules:
+Three priority levels (Q2 highest, Q0 lowest), allotment = 10ms per level, RR quantum = 10ms at
+each level for simplicity. One long CPU-bound job **L** (200ms) starts at t=0; a short interactive
+job **I** (repeats: 2ms CPU then 8ms I/O) arrives at t=100.
 
-- **Gaming**: a sneaky job could issue a tiny I/O just before its slice ends to avoid demotion,
-  staying high priority forever. Fix: track total **allotment** at a level (not per-slice), so it's
-  demoted regardless of how it splits the time.
-- **Starvation**: too many interactive jobs could starve CPU-bound jobs at the bottom. Fix: a
-  **periodic priority boost** — every so often, move *all* jobs back to the top. This guarantees
-  long jobs eventually run and adapts if a job's behavior changes.
+```
+t=0..10    L runs at Q2, uses full allotment -> demoted to Q1
+t=10..20   L runs at Q1, uses full allotment -> demoted to Q0
+t=20..100  L runs at Q0 (nothing else ready)
+t=100      I arrives at Q2 (top). Higher priority than L -> preempts L.
+t=100..102 I runs 2ms, then issues I/O (yields early) -> STAYS at Q2
+t=102..110 L resumes at Q0 while I does I/O
+t=110..112 I ready again at Q2, preempts L, runs 2ms, yields -> stays Q2
+...         I keeps bouncing at the top (snappy response); L makes progress
+            only in the gaps (reasonable turnaround for a background job)
+```
+
+This is exactly the behavior we want: the interactive job gets **low response time**, the batch job
+still finishes, and **nobody had to tell the scheduler the job lengths**.
+
+## Gaming and starvation — and the fixes
+
+The naive rules (without allotment tracking or boosting) have two classic failures:
+
+- **Gaming the scheduler**: a sneaky job could issue a **tiny I/O just before its slice ends** to
+  reset the "gave up early" bit and avoid demotion, hogging high priority forever. **Fix (rule 4):**
+  track *total allotment* consumed at a level, not per-slice behavior — once the budget is spent it's
+  demoted no matter how it split the time.
+- **Starvation**: if enough interactive jobs stay at the top, CPU-bound jobs at the bottom may
+  **never run**. Also, a job that *becomes* interactive after a CPU-heavy phase is stuck low. **Fix
+  (rule 5):** a **periodic priority boost** moves *all* jobs to the top every `S` ms — guaranteeing
+  progress and letting behavior changes re-sort things.
+
+<KnowledgeCheck
+  id="mlfq-game"
+  type="mcq"
+  prompt="Why track total allotment at a level instead of per-slice yielding behavior?"
+  options={[
+    "To save memory",
+    "So a job can't 'game' the scheduler by yielding just before each slice ends to dodge demotion",
+    "To make context switches faster",
+    "To support more priority levels"
+  ]}
+  answer={1}
+  explanation="Accounting for cumulative CPU used at a level closes the loophole where a job issues a token I/O right before its quantum expires to stay high priority."
+/>
 
 <KnowledgeCheck
   id="mlfq-boost"
@@ -73,18 +119,43 @@ Two problems with the naive rules:
   explanation="Periodic boosting guarantees long-running jobs at the bottom eventually get CPU and lets jobs that turn interactive regain priority."
 />
 
+## Tuning: the "voo-doo constants"
+
+MLFQ has knobs, and setting them is more art than science (Ousterhout called such parameters
+"voo-doo constants"):
+
+- **Number of queues.**
+- **Quantum per level** — often **short at high priority** (snappy interactive turns) and **long at
+  low priority** (fewer switches for CPU-bound batch jobs).
+- **Allotment per level.**
+- **Boost period `S`** — too high starves; too low and CPU-bound jobs never stay demoted, losing
+  the SJF approximation.
+
+Some systems let admins configure these via tables (Solaris's dispatch tables), and some use
+formulas (older FreeBSD decayed priority by recent CPU usage). The takeaway: the *mechanism* is
+fixed; the *policy* is tuned.
+
+<Aside kind="insight">
+The high-level pattern — **start optimistic, demote based on observed cost, and periodically forgive
+past behavior** — shows up far beyond CPU scheduling (e.g., adaptive rate limiting and cache
+admission policies). MLFQ is a great example of learning a policy from cheap runtime signals.
+</Aside>
+
 ## Why it matters
 
 MLFQ-style schedulers power real operating systems because they deliver **good response time for
-interactive work and reasonable turnaround for batch work, with no oracle knowledge** of job
-lengths — purely from observed behavior. It's a beautiful example of learning a good policy from
-runtime feedback.
+interactive work and reasonable turnaround for batch work, with no oracle knowledge** of job lengths
+— purely from observed behavior. Modern Linux uses a different design (CFS, a proportional/fair
+scheduler — next lesson), but MLFQ remains the canonical model for reasoning about the
+turnaround-vs-response trade-off.
 
 ## Recap
 
-- MLFQ uses multiple priority queues; highest non-empty runs (RR within a level).
-- Behavior sets priority: full-slice users are demoted; early-yielders stay high (approximating
+- MLFQ uses multiple priority queues; the highest non-empty runs (RR within a level).
+- Behavior sets priority: full-allotment users are demoted; early-yielders stay high (approximating
   SJF).
 - Track total allotment (anti-gaming) and periodically boost all jobs (anti-starvation).
+- Tuning the queues/quanta/boost period is workload-dependent.
 
-Next: **Proportional-Share Scheduling** — dividing the CPU by shares.
+Next: **Proportional-Share Scheduling** — dividing the CPU by shares rather than by inferred
+priority.

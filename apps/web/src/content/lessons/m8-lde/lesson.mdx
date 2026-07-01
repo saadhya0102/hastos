@@ -10,9 +10,9 @@ hardware-enforced limits and a way for the OS to regain the CPU.
 "Direct execution" means the CPU runs the program's actual instructions — no interpretation, full
 speed. The "limited" part adds two safeguards:
 
-- **Restricted operations** run only in kernel mode. A user program can't do privileged things
-  (talk to devices, change page tables) directly — it must **trap** into the kernel via a system
-  call (recall the ECF module).
+- **Restricted operations** run only in kernel mode. A user program can't do privileged things (talk
+  to devices, change page tables) directly — it must **trap** into the kernel via a system call
+  (recall the ECF module).
 - **The OS can take the CPU back.** Otherwise a process that never yields (an infinite loop) would
   hog the CPU forever.
 
@@ -30,16 +30,58 @@ speed. The "limited" part adds two safeguards:
   explanation="LDE runs user code directly for speed but adds privilege restrictions and a way for the OS to reclaim the CPU."
 />
 
-## Regaining control: the timer interrupt
+## Problem 1: restricted operations (user vs kernel mode)
+
+The CPU has (at least) two privilege levels. In **user mode**, privileged instructions (I/O, loading
+the page-table base register, disabling interrupts) fault. In **kernel mode**, anything goes. User
+code that needs a privileged service performs a **system call**, which is really a controlled trap:
+
+```
+user code            kernel
+---------            ------
+  ...
+  syscall  ---trap--> save regs to kernel stack
+                      switch to kernel mode
+                      look up handler # in the trap table
+                      run the handler (e.g., read())
+           <-return-  restore regs, switch to user mode
+  ...        (iret)   resume right after the syscall
+```
+
+Two design points make this safe and fast:
+
+- **The trap table** is installed by the kernel **at boot** (a privileged operation). User code
+  can't choose *which* kernel address to jump to — it names a **system-call number**, and the kernel
+  indexes its own table. This is the difference between "jump anywhere in the kernel" (a security
+  hole) and "request one of a fixed menu of services."
+- **Separate kernel stack**: on a trap the hardware switches to a per-process kernel stack, so the
+  handler doesn't trust (or clobber) the user stack.
+
+<KnowledgeCheck
+  id="lde-syscallnum"
+  type="mcq"
+  prompt="Why does a system call pass a call *number* into a kernel trap table instead of a target address?"
+  options={[
+    "Numbers are smaller",
+    "So user code can only invoke a fixed menu of kernel services, not jump to arbitrary kernel code",
+    "The CPU can't jump to addresses in kernel mode",
+    "To make syscalls slower"
+  ]}
+  answer={1}
+  explanation="Indexing a kernel-controlled trap table restricts entry to vetted handlers; letting user code supply an address would let it run arbitrary kernel code."
+/>
+
+## Problem 2: regaining control — the timer interrupt
 
 How does the OS get the CPU back from a running process? Not by asking nicely — by the **timer
-interrupt**. The OS programs a hardware timer to fire every few milliseconds; when it does, control
-traps into the kernel regardless of what the user program was doing. The kernel's handler can then
-run the **scheduler** and possibly switch to another process.
+interrupt**. The OS programs a hardware timer (a privileged op, at boot) to fire every few
+milliseconds; when it does, control traps into the kernel **regardless of what the user program was
+doing**. The kernel's handler can then run the **scheduler** and possibly switch to another process.
 
 This is **preemptive** scheduling: the OS forcibly preempts the running process at timer ticks. A
-**cooperative** approach (relying on processes to yield) is fragile — one buggy loop hangs
-everything.
+**cooperative** approach (relying on processes to call `yield()` or make syscalls) is fragile — one
+buggy loop with no syscalls hangs the whole machine. Early Mac OS and Windows 3.x were cooperative;
+the infamous consequence was that a single frozen app could lock up the system.
 
 <KnowledgeCheck
   id="lde-timer"
@@ -55,24 +97,38 @@ everything.
   explanation="The timer interrupt fires regardless of user code, letting the kernel run the scheduler and preempt the process."
 />
 
-## Putting it together
+## Putting it together: the context switch
 
-On a timer tick (or a syscall/blocking event): trap to kernel → save the current process's context
-→ run the scheduler to pick the next process → restore its context → return to user mode. That
-context switch (from the processes module) plus the timer is the complete mechanism. The *policy* —
-*which* process to pick — is the scheduler, the subject of the rest of this module.
+On a timer tick (or a syscall/blocking event) the full sequence is:
+
+```
+1. hardware: timer fires -> trap to kernel, save P1's user regs on its kernel stack
+2. kernel:   run the timer handler -> decide to switch (scheduler picks P2)
+3. kernel:   switch(P1, P2)
+               save P1's kernel registers (incl. SP) into P1's process struct
+               restore P2's kernel registers (incl. SP) from P2's process struct
+4. hardware: return-from-trap using P2's kernel stack
+               restore P2's user regs, switch to user mode, resume P2
+```
+
+Note there are **two register saves**: the hardware saves user state on the trap, and the kernel's
+`switch()` saves/restores kernel state (the software context switch). A context switch is cheap in
+absolute terms (~µs) but not free — and it leaves the new process with **cold caches and TLB**, an
+indirect cost that matters for how big we make time slices (next lessons).
 
 <Aside kind="insight">
-Mechanism vs. policy: LDE + context switch + timer is the **mechanism** for sharing the CPU; the
-scheduling algorithm (FIFO, RR, MLFQ...) is the **policy**. Separating the two is a recurring OS
-design principle.
+Mechanism vs. policy: LDE + trap table + timer + context switch is the **mechanism** for sharing the
+CPU; the scheduling algorithm (FIFO, RR, MLFQ...) is the **policy**. Separating the two — build a
+minimal, correct mechanism, then plug in policies — is a recurring OS design principle.
 </Aside>
 
 ## Recap
 
-- LDE runs user code directly but restricts privileged ops (trap to enter the kernel) and lets the
-  OS reclaim the CPU.
-- The timer interrupt enables preemption — the OS regains control even from non-yielding code.
+- LDE runs user code directly but restricts privileged ops (trap to enter the kernel via a
+  boot-installed trap table indexed by call number) and lets the OS reclaim the CPU.
+- The **timer interrupt** enables preemption — the OS regains control even from non-yielding code.
+- A context switch saves the outgoing process's context and restores the incoming one's; it's cheap
+  but pays a hidden cost in cold caches/TLB.
 - Mechanism (LDE + context switch + timer) is separate from policy (the scheduling algorithm).
 
 Next: **CPU Scheduling** — the policies for choosing who runs.

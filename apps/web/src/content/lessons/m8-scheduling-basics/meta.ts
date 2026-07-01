@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m8-scheduling",
   title: "CPU Scheduling: FIFO, SJF, and Round Robin",
   order: 1,
-  estMinutes: 28,
+  estMinutes: 42,
   objectives: [
     "Define turnaround time and response time",
     "Analyze FIFO and the convoy effect",

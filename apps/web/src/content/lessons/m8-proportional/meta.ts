@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m8-scheduling",
   title: "Proportional-Share Scheduling",
   order: 3,
-  estMinutes: 18,
+  estMinutes: 32,
   objectives: [
     "Explain lottery and stride scheduling",
     "Reason about fairness over time",

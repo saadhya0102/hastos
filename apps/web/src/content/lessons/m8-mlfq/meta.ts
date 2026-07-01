@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m8-scheduling",
   title: "Multi-Level Feedback Queue (MLFQ)",
   order: 2,
-  estMinutes: 22,
+  estMinutes: 38,
   objectives: [
     "Explain how MLFQ approximates SJF without knowing job lengths",
     "State the MLFQ rules for priority and demotion",

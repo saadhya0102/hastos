@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m8-scheduling",
   title: "Limited Direct Execution",
   order: 0,
-  estMinutes: 18,
+  estMinutes: 30,
   objectives: [
     "Explain how the OS runs user code directly yet stays in control",
     "Describe the timer interrupt's role in preemption",
