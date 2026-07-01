@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m6-virtual-memory",
   title: "The Address Space Illusion",
   order: 0,
-  estMinutes: 20,
+  estMinutes: 26,
   objectives: [
     "Explain why virtual memory exists and the problems it solves",
     "Describe the layout of a process's virtual address space",

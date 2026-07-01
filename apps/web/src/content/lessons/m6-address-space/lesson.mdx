@@ -122,6 +122,31 @@ the hardware-enforced safety net.
   explanation="The hardware checks each access against the page tables; an unmapped or permission-violating access faults (SIGSEGV)."
 />
 
+## Kernel space, and why addresses are "canonical"
+
+The top of every process's address space is reserved for the **kernel**, mapped into every process
+but accessible only in kernel mode (so a syscall doesn't have to switch page tables to run kernel
+code). This is the "higher half": user space low, kernel space high.
+
+Although pointers are 64 bits, current x86-64 only implements **48 bits** of virtual address. A valid
+("**canonical**") address must have bits 48–63 all equal to bit 47 — so the space is split into a low
+half and a high half with a giant unusable gap between. Dereferencing a non-canonical address faults
+immediately. (5-level paging extends this to 57 bits.)
+
+<KnowledgeCheck
+  id="as-kernel"
+  type="mcq"
+  prompt="Why is the kernel mapped into the high part of every process's address space?"
+  options={[
+    "To waste memory",
+    "So system calls/traps can run kernel code without switching the whole page table, while user-mode access to it is blocked by permissions",
+    "Because the kernel is large",
+    "To make pointers 64-bit"
+  ]}
+  answer={1}
+  explanation="A shared kernel mapping (accessible only in kernel mode) lets traps enter the kernel cheaply without a full address-space switch; page permissions keep user code out."
+/>
+
 ## Recap
 
 - Virtual memory gives each process a private, protected, contiguous-looking address space.

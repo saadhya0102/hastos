@@ -106,6 +106,32 @@ TLB pressure by covering more memory per entry.)
   explanation="The TLB caches VPN->PFN translations so most accesses skip the multi-level page-table walk."
 />
 
+## Sizing the levels, and TLB reach
+
+The 4-level split isn't arbitrary. With 4 KiB pages the offset is 12 bits, leaving 36 bits of VPN
+split into **four 9-bit indices** — and 2^9 = **512** entries per table, which is exactly one 4 KiB
+page of 8-byte entries. So each page table is itself one page. This is why 48-bit virtual addresses
+use 4 levels (`12 + 9*4 = 48`); 5-level paging adds one more index for 57-bit spaces.
+
+**TLB reach** = (TLB entries) × (page size). A 64-entry TLB with 4 KiB pages covers only 256 KiB — so
+a loop over a few MB thrashes the TLB even if the data fits in L2. **Huge pages** (2 MiB) multiply
+reach 512×: the same 64 entries now cover 128 MiB, which is why databases and JVMs enable them for big
+heaps.
+
+<KnowledgeCheck
+  id="pg-tlbreach"
+  type="mcq"
+  prompt="Why do huge pages (2 MiB) reduce TLB misses for large working sets?"
+  options={[
+    "They make memory faster",
+    "Each TLB entry maps 2 MiB instead of 4 KiB, so the same number of entries covers 512x more memory (more TLB reach)",
+    "They disable the page table",
+    "They shrink the address space"
+  ]}
+  answer={1}
+  explanation="TLB reach = entries x page size; larger pages mean each entry covers more memory, so fewer entries are needed to map a big working set."
+/>
+
 ## Page faults and demand paging
 
 If a PTE is marked **not present**, the access triggers a **page fault** — a trap into the OS. The

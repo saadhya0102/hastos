@@ -93,6 +93,35 @@ free [A] | free [B]   ->   free [A+B]      (coalesce when neighbors are free)
   explanation="Merging neighboring free blocks rebuilds large contiguous holes, combating external fragmentation."
 />
 
+## Placement policies
+
+When several free blocks fit, *which* do you pick? The policy trades speed for fragmentation:
+
+- **First-fit**: take the first block that fits. Fast; tends to leave small splinters near the list
+  head.
+- **Next-fit**: like first-fit but resume searching where you left off. Spreads usage; often worse
+  fragmentation.
+- **Best-fit**: scan all and take the smallest block that fits. Least wasted space per allocation, but
+  slower and can create many tiny unusable remainders.
+- **Worst-fit**: take the largest block (leaves a big remainder). Rarely used; generally poor.
+
+In practice first-fit on a good structure is competitive, and **segregated lists** (below) sidestep
+the scan entirely.
+
+<KnowledgeCheck
+  id="fl-placement"
+  type="mcq"
+  prompt="What is the main trade-off of best-fit vs. first-fit placement?"
+  options={[
+    "Best-fit uses more memory",
+    "Best-fit minimizes wasted space per allocation but must scan more (slower) and can leave many tiny remainders",
+    "First-fit never fits",
+    "They are identical"
+  ]}
+  answer={1}
+  explanation="Best-fit finds the tightest block (less internal waste) at the cost of a longer search and lots of small leftover fragments; first-fit is faster but less tight."
+/>
+
 ## Explicit free lists: track only free blocks
 
 Walking *all* blocks (implicit) is slow when most are allocated. An **explicit free list** stores
@@ -131,6 +160,34 @@ The progression — implicit → explicit → segregated — is a microcosm of s
 correct and simple, then add structure (separate the free set; bucket by size) to make the common
 operation fast. Each step trades a little metadata for a lot of speed.
 </Aside>
+
+## Buddy and slab allocators
+
+Two designs you'll meet in real kernels/allocators:
+
+- **Buddy allocator**: manage memory in power-of-two blocks. To satisfy a request, split a block in
+  half repeatedly until you reach the right size; the two halves are "buddies." On free, if a block's
+  buddy is also free, merge them back — coalescing in **O(1)** via simple address arithmetic (a
+  block's buddy address is its address XOR its size). Fast merging, but up to ~2x internal
+  fragmentation from rounding to powers of two. Linux uses this for physical page allocation.
+- **Slab allocator**: for objects of one fixed type/size (e.g., kernel `task_struct`s), pre-carve
+  slabs into equal slots and keep them on a free list. Allocation/free are O(1), fragmentation is
+  near-zero, and freed objects can stay partly initialized (cache warm). This is the production form
+  of the segregated/pool idea, and what backs the pool allocator you'll build.
+
+<KnowledgeCheck
+  id="fl-buddy"
+  type="mcq"
+  prompt="How does a buddy allocator coalesce freed memory in O(1)?"
+  options={[
+    "It scans the whole heap",
+    "Blocks are power-of-two sized; a block's 'buddy' address is computable (address XOR size), so it can instantly check if the buddy is free and merge",
+    "It never coalesces",
+    "It uses a footer scan"
+  ]}
+  answer={1}
+  explanation="Power-of-two blocks have a deterministically-located buddy (address XOR size); if the buddy is free, the pair merges into the next-larger block immediately."
+/>
 
 ## Recap
 

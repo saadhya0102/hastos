@@ -130,6 +130,38 @@ first-fit-like speed — the subject of the next lessons.
   explanation="Best-fit selects the smallest sufficient block to reduce wasted space, at the cost of scanning more candidates."
 />
 
+## Measuring an allocator, and going multithreaded
+
+Allocators are judged on two axes in tension:
+
+- **Throughput** — allocations/frees per second.
+- **Memory utilization** (peak) — how little total memory it uses vs. the live bytes requested
+  (1 − fragmentation/overhead). Maximizing one tends to cost the other.
+
+Where does raw memory come from? Small requests are carved from a heap grown with `sbrk`; **large**
+requests often go straight to **`mmap`** (and are `munmap`'d on free), so a big buffer doesn't
+permanently bloat the heap.
+
+The biggest real-world twist is **threads**: a single global heap with one lock serializes every
+`malloc`. Production allocators (**tcmalloc**, **jemalloc**) give each thread a **thread-local cache /
+arena** of size-class free lists, so the common case is lock-free; threads only touch shared structure
+when refilling/draining a cache. This is the segregated-list idea plus per-thread sharding for
+scalability.
+
+<KnowledgeCheck
+  id="ai-mt"
+  type="mcq"
+  prompt="Why do modern allocators (tcmalloc/jemalloc) give each thread its own cache/arena?"
+  options={[
+    "To use more memory",
+    "So most malloc/free calls hit a thread-local free list without a global lock, avoiding contention across threads",
+    "To disable fragmentation",
+    "Threads can't call malloc otherwise"
+  ]}
+  answer={1}
+  explanation="Per-thread caches make the common allocation path lock-free; a single global-locked heap would serialize all threads and kill scalability."
+/>
+
 ## Recap
 
 - An allocator subdivides OS memory into aligned blocks for `malloc` and recycles them on `free`.

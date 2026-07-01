@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m6-virtual-memory",
   title: "Implementing malloc: Free Lists and Coalescing",
   order: 4,
-  estMinutes: 34,
+  estMinutes: 42,
   objectives: [
     "Implement an implicit free list with boundary tags",
     "Split blocks on allocation and coalesce on free",

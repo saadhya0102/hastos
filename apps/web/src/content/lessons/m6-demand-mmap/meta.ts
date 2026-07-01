@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m6-virtual-memory",
   title: "Demand Paging, mmap, and Copy-on-Write",
   order: 2,
-  estMinutes: 22,
+  estMinutes: 30,
   objectives: [
     "Explain memory mapping with mmap and memory-mapped files",
     "Describe copy-on-write and how it makes fork cheap",

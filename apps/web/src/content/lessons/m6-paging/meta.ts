@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m6-virtual-memory",
   title: "Pages, Page Tables, and the TLB",
   order: 1,
-  estMinutes: 30,
+  estMinutes: 38,
   objectives: [
     "Split a virtual address into page number and offset",
     "Translate addresses through (multi-level) page tables",

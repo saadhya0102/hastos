@@ -113,6 +113,50 @@ fixed-size object cache.
   explanation="With uniform block sizes, every free block is interchangeable, so scattered frees can always satisfy new requests of that size."
 />
 
+## Stack allocators and scoped regions
+
+An arena becomes a **stack allocator** if you also support **markers**: save the current offset, do
+some temporary allocations, then restore the offset to free them all at once — nested, LIFO.
+
+```c
+size_t mark = a->used;      // save
+void *tmp = arena_alloc(a, n);
+/* ... use tmp ... */
+a->used = mark;             // free everything since the mark, O(1)
+```
+
+This gives cheap **scoped** temporaries (great for per-frame or per-recursion scratch) while still
+allowing an outer arena to persist. Combined with an OS thread's real call stack, it's the same idea
+that makes stack allocation of locals free.
+
+<KnowledgeCheck
+  id="ap-marker"
+  type="mcq"
+  prompt="How does a stack (marker) allocator free a batch of temporary allocations?"
+  options={[
+    "It calls free on each one",
+    "It restores a previously saved offset ('mark'), reclaiming everything allocated since then in O(1)",
+    "It coalesces free blocks",
+    "It waits for garbage collection"
+  ]}
+  answer={1}
+  explanation="Saving and later restoring the bump offset frees all allocations made in between at once (LIFO), with no per-object bookkeeping."
+/>
+
+## Aside: manual vs. automatic reclamation
+
+These allocators are all **manual** placement strategies; reclamation strategy is a separate axis:
+
+- **Manual free** (C): you decide when — fast, but leaks/use-after-free are on you.
+- **Reference counting**: free when the last reference drops (deterministic, but cycles leak and
+  atomic refcounts cost on threads).
+- **Tracing GC**: periodically find unreachable objects and reclaim them (no dangling pointers, but
+  pauses and overhead).
+
+Arenas/pools are popular precisely because they make manual reclamation *trivial and safe* for the
+common batch/fixed-size cases — often getting GC-like ergonomics (free everything at once) without
+GC's cost.
+
 ## Choosing an allocator
 
 - **General `malloc`** — arbitrary sizes/lifetimes; most flexible, most overhead.

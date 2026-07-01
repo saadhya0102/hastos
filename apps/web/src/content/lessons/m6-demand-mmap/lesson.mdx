@@ -35,6 +35,35 @@ and how shared libraries are loaded.
   explanation="mmap maps file/anonymous memory into your virtual address space; accesses fault pages in on demand and can be shared across processes."
 />
 
+### Shared vs. private, and the zero page
+
+`mmap`'s flags decide who sees your writes and where memory comes from:
+
+- **`MAP_SHARED`** — writes go back to the file and are visible to other processes mapping it (use
+  `msync` to force durability). This is how processes share memory.
+- **`MAP_PRIVATE`** — you get a **copy-on-write** view; your writes stay private and don't hit the
+  file.
+- **`MAP_ANONYMOUS`** — not backed by a file at all: fresh zero-filled memory (how `malloc` gets big
+  blocks, and how you make shareable anonymous regions with `MAP_SHARED|MAP_ANONYMOUS`).
+
+A neat optimization: fresh anonymous pages are all mapped copy-on-write to a single shared **zero
+page**. Reads of untouched memory cost nothing extra; only the first *write* allocates a real frame
+(**demand-zero**). That's why a huge `calloc` can return instantly.
+
+<KnowledgeCheck
+  id="mm-shared"
+  type="mcq"
+  prompt="You want two processes to see each other's writes through a mapped file. Which flag?"
+  options={[
+    "MAP_PRIVATE",
+    "MAP_SHARED",
+    "MAP_ANONYMOUS",
+    "PROT_READ"
+  ]}
+  answer={1}
+  explanation="MAP_SHARED makes writes visible to other mappers and (for file mappings) written back to the file; MAP_PRIVATE gives a copy-on-write, process-local view."
+/>
+
 ## Copy-on-write (COW)
 
 Recall `fork` gives the child a copy of the parent's memory. Copying gigabytes eagerly would be
@@ -86,6 +115,29 @@ smaller working set — not faster paging.
   ]}
   answer={1}
   explanation="Thrashing is pathological paging: the working set doesn't fit in RAM, so the system churns on swap and throughput collapses."
+/>
+
+## Overcommit and the OOM killer
+
+Because pages are lazy (demand-zero, COW), the OS lets you **allocate more virtual memory than
+physical RAM+swap** — **overcommit** — betting you won't touch it all. `malloc` of 10 GB can succeed
+even with 8 GB RAM, since nothing is backed until written. The gamble fails when programs actually
+touch more than exists: Linux then invokes the **OOM killer**, which picks a process (by a heuristic
+score) and kills it to reclaim memory. This is why a successful `malloc` doesn't guarantee the memory
+is really there — the reckoning comes at first *touch*, not at allocation.
+
+<KnowledgeCheck
+  id="mm-overcommit"
+  type="mcq"
+  prompt="Under memory overcommit, when can a process be killed by the OOM killer despite malloc succeeding?"
+  options={[
+    "Never",
+    "When processes actually touch (write) more pages than physical RAM+swap can back, since allocation was lazy",
+    "Only at program startup",
+    "When malloc returns NULL"
+  ]}
+  answer={1}
+  explanation="Overcommit backs pages lazily at first write; if real usage exceeds RAM+swap, the kernel must kill a process to reclaim memory even though malloc had returned success."
 />
 
 ## It all rests on the page fault

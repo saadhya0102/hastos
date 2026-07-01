@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m6-virtual-memory",
   title: "Dynamic Allocation and Fragmentation",
   order: 3,
-  estMinutes: 24,
+  estMinutes: 30,
   objectives: [
     "Explain what a heap allocator does and the malloc/free contract",
     "Distinguish internal from external fragmentation",

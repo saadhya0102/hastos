@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m6-virtual-memory",
   title: "Arena and Pool Allocators",
   order: 5,
-  estMinutes: 24,
+  estMinutes: 32,
   objectives: [
     "Implement a bump (arena) allocator and know when it wins",
     "Implement a fixed-size pool/slab allocator with an O(1) free list",
