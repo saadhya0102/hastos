@@ -13,6 +13,7 @@ OPENAI_MODEL = "gpt-4o-mini"
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 ALLOWED_ORIGIN = "http://localhost:5173,https://hastos.web.app,https://hastos.firebaseapp.com"
+EXEC_BACKEND = "auto"           # "piston" | "judge0" | "auto" (auto prefers Piston if PISTON_URL is set)
 
 # Rate-limit + cache KV (per-user sliding-window counters; see src/lib/ratelimit.ts).
 [[kv_namespaces]]
@@ -22,7 +23,8 @@ id = "5921c7a6b09e4fe988b706899d52e733"
 # Secrets (do NOT put values here):
 #   wrangler secret put OPENAI_API_KEY
 #   wrangler secret put GROQ_API_KEY
-#   wrangler secret put JUDGE0_URL
+#   wrangler secret put PISTON_URL             (primary grader, e.g. your Cloudflare Tunnel URL)
+#   wrangler secret put JUDGE0_URL             (optional fallback grader)
 #   wrangler secret put JUDGE0_AUTH_TOKEN
 #   wrangler secret put JUDGE0_RAPIDAPI_HOST   (optional, if using RapidAPI)
 #   wrangler secret put FIREBASE_PROJECT_ID

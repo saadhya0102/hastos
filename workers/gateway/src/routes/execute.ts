@@ -2,7 +2,14 @@ import type { Context } from "hono";
 import type { Env, RunResult, SubmitResult } from "../types";
 import { verifyUser } from "../lib/auth";
 import { rateLimit } from "../lib/ratelimit";
-import { runJudge0, Judge0Error, type Judge0Result } from "../lib/judge0";
+import {
+  execRun,
+  resolveBackend,
+  ExecUnavailableError,
+  Judge0Error,
+  PistonError,
+  type Judge0Result,
+} from "../lib/exec";
 import { assembleHarness, getHarnessProblem } from "../lib/problems";
 import { gradeHarness } from "../lib/grade";
 
@@ -65,6 +72,9 @@ export async function executeRoute(c: Context<{ Bindings: Env }>): Promise<Respo
   const totalSource = (body.source ?? "") + (body.files?.map((f) => f.content).join("") ?? "");
   if (totalSource.length > 65536) return c.json({ error: "source_too_large" }, 413);
 
+  const backend = resolveBackend(env);
+  const provider = backend;
+
   try {
     // ---- SUBMIT (graded) ----
     if (body.mode === "submit") {
@@ -78,17 +88,18 @@ export async function executeRoute(c: Context<{ Bindings: Env }>): Promise<Respo
         "";
       const h = assembleHarness(problem, learnerSource);
       const started = Date.now();
-      const r = await runJudge0(env, {
+      const r = await execRun(env, {
+        slug: "c",
         languageId: h.languageId,
-        sourceCode: h.sourceCode,
-        additionalFilesZipB64: h.additionalFilesZipB64,
+        source: h.sourceCode,
+        // Sanitizer/threading flags apply on Judge0; Piston ignores compilerOptions.
         compilerOptions: h.compilerOptions,
         cpuTimeLimit: h.cpuTimeLimit,
         wallTimeLimit: h.wallTimeLimit,
         memoryLimitKb: h.memoryLimitKb,
       });
       const result: SubmitResult = gradeHarness(problem, r);
-      result.meta = { provider: "judge0", durationMs: Date.now() - started };
+      result.meta = { provider, durationMs: Date.now() - started };
       return c.json(result);
     }
 
@@ -102,10 +113,10 @@ export async function executeRoute(c: Context<{ Bindings: Env }>): Promise<Respo
           body.source ??
           "";
         const h = assembleHarness(problem, learnerSource);
-        const r = await runJudge0(env, {
+        const r = await execRun(env, {
+          slug: "c",
           languageId: h.languageId,
-          sourceCode: h.sourceCode,
-          additionalFilesZipB64: h.additionalFilesZipB64,
+          source: h.sourceCode,
           compilerOptions: h.compilerOptions,
           cpuTimeLimit: h.cpuTimeLimit,
           wallTimeLimit: h.wallTimeLimit,
@@ -119,9 +130,10 @@ export async function executeRoute(c: Context<{ Bindings: Env }>): Promise<Respo
     const languageId = LANG_ID[body.language];
     if (!languageId) return c.json({ error: "unsupported_language" }, 400);
     const source = body.source ?? body.files?.[0]?.content ?? "";
-    const r = await runJudge0(env, {
+    const r = await execRun(env, {
+      slug: body.language,
       languageId,
-      sourceCode: source,
+      source,
       stdin: body.stdin,
       cpuTimeLimit: 5,
       wallTimeLimit: 10,
@@ -129,7 +141,9 @@ export async function executeRoute(c: Context<{ Bindings: Env }>): Promise<Respo
     });
     return c.json(toRunResult(r));
   } catch (e) {
+    if (e instanceof ExecUnavailableError) return c.json({ error: e.message }, 503);
     if (e instanceof Judge0Error) return c.json({ error: e.message }, e.status as 502);
+    if (e instanceof PistonError) return c.json({ error: e.message }, e.status as 502);
     return c.json({ error: (e as Error).message }, 500);
   }
 }

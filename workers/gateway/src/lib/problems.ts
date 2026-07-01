@@ -1,5 +1,3 @@
-import { zipSync, strToU8 } from "fflate";
-
 /**
  * Hidden problem harnesses. Driver/header source lives ONLY here in the Worker — never in
  * the client bundle — so hidden test logic is not exposed. See PRD §11 / §37.
@@ -2377,29 +2375,40 @@ export function getHarnessProblem(id: string): HarnessProblem | undefined {
 
 export interface AssembledHarness {
   languageId: number;
+  /** Single self-contained translation unit: header + learner impl + driver. */
   sourceCode: string;
-  additionalFilesZipB64: string;
   compilerOptions: string;
   cpuTimeLimit: number;
   wallTimeLimit: number;
   memoryLimitKb: number;
 }
 
-/** Build the Judge0 multi-file payload from the learner's editable source. */
+/** Remove local (quoted) #include lines; keep system (<...>) includes. */
+function stripLocalIncludes(src: string): string {
+  return src.replace(/^[ \t]*#[ \t]*include[ \t]+"[^"]*".*$/gm, "");
+}
+
+/**
+ * Assemble a single self-contained C translation unit from the hidden header,
+ * the learner's implementation, and the hidden driver (which contains main()).
+ *
+ * Local `#include "..."` directives are stripped from the learner impl and the
+ * driver (including the driver's trailing `#include "impl.c"`), and the header
+ * is inlined first. The result compiles identically as a single file on both
+ * Judge0 (single source_code) and Piston (single file in files[]), avoiding all
+ * multi-file / compile-order ambiguity between the two backends.
+ */
 export function assembleHarness(
   problem: HarnessProblem,
   learnerSource: string,
 ): AssembledHarness {
-  const zipped = zipSync({
-    [problem.header.name]: strToU8(problem.header.content),
-    [problem.implName]: strToU8(learnerSource),
-  });
-  let bin = "";
-  for (const b of zipped) bin += String.fromCharCode(b);
+  const header = problem.header.content.trimEnd();
+  const impl = stripLocalIncludes(learnerSource).trimEnd();
+  const driver = stripLocalIncludes(problem.driver).trimEnd();
+  const source = `${header}\n\n/* ---- learner implementation ---- */\n${impl}\n\n/* ---- hidden test driver ---- */\n${driver}\n`;
   return {
     languageId: problem.languageId,
-    sourceCode: problem.driver,
-    additionalFilesZipB64: btoa(bin),
+    sourceCode: source,
     compilerOptions: problem.compilerOptions,
     cpuTimeLimit: problem.cpuTimeLimit,
     wallTimeLimit: problem.wallTimeLimit,

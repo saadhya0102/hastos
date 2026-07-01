@@ -9,6 +9,7 @@ export interface Env {
   GROQ_BASE_URL: string;
   GROQ_MODEL: string;
   ALLOWED_ORIGIN: string;
+  EXEC_BACKEND?: string; // "piston" | "judge0" | "auto" (default: auto -> piston if PISTON_URL set)
 
   // secrets
   OPENAI_API_KEY?: string;
@@ -16,7 +17,22 @@ export interface Env {
   JUDGE0_URL?: string;
   JUDGE0_AUTH_TOKEN?: string;
   JUDGE0_RAPIDAPI_HOST?: string;
+  PISTON_URL?: string;
   FIREBASE_PROJECT_ID?: string;
+}
+
+export type ExecBackend = "piston" | "judge0" | "none";
+
+export interface GraderStatus {
+  online: boolean;
+  backend: ExecBackend;
+  /** Capabilities the active backend supports; drives client-side WASM gating. */
+  capabilities: {
+    sanitizers: boolean; // ASan/UBSan/TSan available
+    threads: boolean; // pthread problems runnable
+    languages: string[]; // executable language slugs
+  };
+  note?: string;
 }
 
 export type Verdict =

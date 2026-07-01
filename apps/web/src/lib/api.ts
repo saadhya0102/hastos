@@ -1,10 +1,13 @@
 import { auth } from "./firebase";
 import type {
   ExecuteRequest,
+  LanguageId,
   RunResult,
   SlavaRequest,
   SubmitResult,
 } from "@hasystor/shared";
+import { LANGUAGES } from "@hasystor/shared";
+import { isWasmLanguage, runPythonWasm } from "./wasm";
 
 const GATEWAY = import.meta.env.VITE_GATEWAY_URL || "http://127.0.0.1:8787";
 
@@ -47,6 +50,40 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 export function runCode(req: Omit<ExecuteRequest, "mode">): Promise<RunResult> {
   return postJson<RunResult>("/execute", { ...req, mode: "run" });
+}
+
+/** How a run was (or would be) executed, for UI messaging. */
+export type RunVia = "server" | "wasm";
+
+export function runVia(language: LanguageId, graderOnline: boolean): RunVia {
+  return graderOnline ? "server" : isWasmLanguage(language) ? "wasm" : "server";
+}
+
+/**
+ * Run code choosing the best backend:
+ *  - server grader online  -> always use the server (full capabilities).
+ *  - server grader offline  -> Python runs in-browser via WASM; other languages
+ *    are unavailable (they need the grader) and we surface a clear error.
+ */
+export async function runSmart(opts: {
+  language: LanguageId;
+  source: string;
+  stdin?: string;
+  graderOnline: boolean;
+}): Promise<RunResult> {
+  const { language, source, stdin, graderOnline } = opts;
+  if (!graderOnline) {
+    if (isWasmLanguage(language)) {
+      return runPythonWasm(source, stdin ?? "");
+    }
+    return {
+      stdout: "",
+      stderr: `The grader is offline, so ${LANGUAGES[language]?.label ?? language} can't run right now. Only Python runs in your browser (WASM). Start Piston to enable the rest.`,
+      exitCode: null,
+      status: "error",
+    };
+  }
+  return runCode({ language, source, stdin });
 }
 
 export function submitCode(req: Omit<ExecuteRequest, "mode">): Promise<SubmitResult> {

@@ -4,6 +4,7 @@ import { useAuth } from "@/lib/auth";
 import { Button } from "./ui";
 import { SlavaPanel } from "./SlavaPanel";
 import { MockTimerBar } from "./MockTimerBar";
+import { GraderBadge } from "./GraderBadge";
 
 const NAV = [
   { to: "/", label: "Dashboard", end: true },
@@ -40,6 +41,7 @@ export function AppShell() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <GraderBadge />
           <Button size="sm" variant="ghost" onClick={toggleTheme}>
             Theme
           </Button>

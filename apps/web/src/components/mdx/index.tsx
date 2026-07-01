@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import clsx from "clsx";
 import type { LanguageId } from "@hasystor/shared";
-import { runCode } from "@/lib/api";
+import { runSmart } from "@/lib/api";
+import { useGrader } from "@/lib/grader";
+import { LANGUAGES } from "@hasystor/shared";
 import type { RunResult } from "@hasystor/shared";
 import { CodeEditor } from "../ide/CodeEditor";
 import { OutputConsole } from "../ide/OutputConsole";
@@ -149,15 +151,17 @@ export function MiniIDE({
   stdin?: string;
   height?: number;
 }) {
+  const { online } = useGrader();
   const [code, setCode] = useState(starter);
   const [result, setResult] = useState<RunResult | null>(null);
   const [running, setRunning] = useState(false);
+  const blocked = !online && !LANGUAGES[language].wasm;
 
   async function run() {
     setRunning(true);
     setResult(null);
     try {
-      const r = await runCode({ language, source: code, stdin });
+      const r = await runSmart({ language, source: code, stdin, graderOnline: online });
       setResult(r);
     } catch (e) {
       setResult({
@@ -175,10 +179,15 @@ export function MiniIDE({
     <div className="my-6 overflow-hidden rounded-xl border border-border">
       <div className="flex items-center justify-between border-b border-border bg-surface px-3 py-2">
         <Badge tone="info">Mini IDE · {language}</Badge>
-        <Button size="sm" onClick={run} disabled={running}>
-          {running ? "Running…" : "Run"}
+        <Button size="sm" onClick={run} disabled={running || blocked} title={blocked ? "Grader offline — needs the server" : undefined}>
+          {running ? "Running…" : !online && LANGUAGES[language].wasm ? "Run in browser" : "Run"}
         </Button>
       </div>
+      {blocked && (
+        <div className="border-b border-warn/30 bg-warn/10 px-3 py-1.5 text-xs text-warn">
+          Grader offline — {LANGUAGES[language].label} can't run here. Start Piston to enable it.
+        </div>
+      )}
       <div style={{ height }}>
         <CodeEditor language={language} value={code} onChange={setCode} />
       </div>

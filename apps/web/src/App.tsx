@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { AuthProvider } from "@/lib/auth";
+import { GraderProvider } from "@/lib/grader";
 import { SlavaProvider } from "@/lib/slava";
 import { AppShell } from "@/components/AppShell";
 import { Dashboard } from "@/pages/Dashboard";
@@ -22,30 +23,32 @@ import { NotFound } from "@/pages/NotFound";
 export default function App() {
   return (
     <AuthProvider>
-      <SlavaProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route element={<AppShell />}>
-              <Route index element={<Dashboard />} />
-              <Route path="learn" element={<Learn />} />
-              <Route path="learn/:moduleId" element={<ModulePage />} />
-              <Route path="learn/:moduleId/:lessonId" element={<LessonPage />} />
-              <Route path="problems" element={<Problems />} />
-              <Route path="problems/:problemId" element={<ProblemPage />} />
-              <Route path="interview" element={<Interview />} />
-              <Route path="mock-interview" element={<MockInterview />} />
-              <Route path="tests" element={<Tests />} />
-              <Route path="review" element={<Review />} />
-              <Route path="playground" element={<Playground />} />
-              <Route path="profile" element={<Profile />} />
-              <Route path="admin" element={<Admin />} />
-              <Route path="login" element={<Login />} />
-              <Route path="signup" element={<Signup />} />
-              <Route path="*" element={<NotFound />} />
-            </Route>
-          </Routes>
-        </BrowserRouter>
-      </SlavaProvider>
+      <GraderProvider>
+        <SlavaProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route element={<AppShell />}>
+                <Route index element={<Dashboard />} />
+                <Route path="learn" element={<Learn />} />
+                <Route path="learn/:moduleId" element={<ModulePage />} />
+                <Route path="learn/:moduleId/:lessonId" element={<LessonPage />} />
+                <Route path="problems" element={<Problems />} />
+                <Route path="problems/:problemId" element={<ProblemPage />} />
+                <Route path="interview" element={<Interview />} />
+                <Route path="mock-interview" element={<MockInterview />} />
+                <Route path="tests" element={<Tests />} />
+                <Route path="review" element={<Review />} />
+                <Route path="playground" element={<Playground />} />
+                <Route path="profile" element={<Profile />} />
+                <Route path="admin" element={<Admin />} />
+                <Route path="login" element={<Login />} />
+                <Route path="signup" element={<Signup />} />
+                <Route path="*" element={<NotFound />} />
+              </Route>
+            </Routes>
+          </BrowserRouter>
+        </SlavaProvider>
+      </GraderProvider>
     </AuthProvider>
   );
 }

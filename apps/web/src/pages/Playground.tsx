@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { LanguageId, RunResult } from "@hasystor/shared";
 import { ALL_LANGUAGE_IDS, LANGUAGES } from "@hasystor/shared";
-import { runCode } from "@/lib/api";
+import { runSmart } from "@/lib/api";
+import { useGrader } from "@/lib/grader";
 import { CodeEditor } from "@/components/ide/CodeEditor";
 import { OutputConsole } from "@/components/ide/OutputConsole";
 import { Button } from "@/components/ui";
@@ -16,11 +17,16 @@ const SAMPLES: Partial<Record<LanguageId, string>> = {
 };
 
 export function Playground() {
+  const { online } = useGrader();
   const [language, setLanguage] = useState<LanguageId>("c");
   const [code, setCode] = useState(SAMPLES.c ?? "");
   const [stdin, setStdin] = useState("");
   const [result, setResult] = useState<RunResult | null>(null);
   const [running, setRunning] = useState(false);
+
+  // When the server grader is offline, only WASM-capable languages can run.
+  const disabled = (l: LanguageId) => !online && !LANGUAGES[l].wasm;
+  const currentDisabled = disabled(language);
 
   function pickLanguage(l: LanguageId) {
     setLanguage(l);
@@ -32,7 +38,7 @@ export function Playground() {
     setRunning(true);
     setResult(null);
     try {
-      setResult(await runCode({ language, source: code, stdin }));
+      setResult(await runSmart({ language, source: code, stdin, graderOnline: online }));
     } catch (e) {
       setResult({ stdout: "", stderr: (e as Error).message, exitCode: null, status: "error" });
     } finally {
@@ -51,12 +57,25 @@ export function Playground() {
             className="rounded-lg border border-border bg-bg px-2 py-1 text-sm"
           >
             {ALL_LANGUAGE_IDS.map((l) => (
-              <option key={l} value={l}>{LANGUAGES[l].label}</option>
+              <option key={l} value={l} disabled={disabled(l)}>
+                {LANGUAGES[l].label}
+                {disabled(l) ? " — needs grader" : LANGUAGES[l].wasm && !online ? " (browser)" : ""}
+              </option>
             ))}
           </select>
-          <Button onClick={run} disabled={running}>{running ? "Running…" : "Run"}</Button>
+          <Button onClick={run} disabled={running || currentDisabled}>
+            {running ? "Running…" : online ? "Run" : LANGUAGES[language].wasm ? "Run in browser" : "Run"}
+          </Button>
         </div>
       </div>
+
+      {!online && (
+        <div className="rounded-lg border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
+          {currentDisabled
+            ? `The grader is offline, so ${LANGUAGES[language].label} can't run. Switch to Python (runs in your browser) or start the grader (Piston).`
+            : "Grader offline — Python runs entirely in your browser via WebAssembly (no threads, syscalls, or files)."}
+        </div>
+      )}
 
       <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-2">
         <div className="overflow-hidden rounded-xl border border-border">

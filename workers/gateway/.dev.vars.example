@@ -4,7 +4,16 @@
 OPENAI_API_KEY=sk-...
 GROQ_API_KEY=gsk_...
 
-# Judge0 (self-hosted or RapidAPI)
+# Execution backend selection: "piston" | "judge0" | "auto" (auto prefers Piston if PISTON_URL set)
+EXEC_BACKEND=auto
+
+# Piston (primary grader). Run locally with Docker, expose via Cloudflare Tunnel.
+# Local example:
+PISTON_URL=http://localhost:2000
+# Tunnel example:
+# PISTON_URL=https://piston.yourdomain.com
+
+# Judge0 (optional fallback grader — self-hosted or RapidAPI)
 # Self-hosted example:
 JUDGE0_URL=http://localhost:2358
 JUDGE0_AUTH_TOKEN=

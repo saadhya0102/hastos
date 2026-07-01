@@ -5,9 +5,10 @@ import clsx from "clsx";
 import type { LanguageId, RunResult, SubmitResult } from "@hasystor/shared";
 import { LANGUAGES } from "@hasystor/shared";
 import { getProblem } from "@/lib/content";
-import { runCode, submitCode, ApiError } from "@/lib/api";
+import { runCode, submitCode, runSmart, ApiError } from "@/lib/api";
 import { recordSubmission } from "@/lib/progress";
 import { useSlava } from "@/lib/slava";
+import { useGrader } from "@/lib/grader";
 import { mdxComponents } from "@/components/mdx";
 import { CodeEditor } from "@/components/ide/CodeEditor";
 import { ResultPanel } from "@/components/ide/ResultPanel";
@@ -20,6 +21,7 @@ export function ProblemPage() {
   const { problemId = "" } = useParams();
   const entry = getProblem(problemId);
   const slava = useSlava();
+  const { online: graderOnline } = useGrader();
 
   const spec = entry?.spec;
   const [language, setLanguage] = useState<LanguageId>(spec?.allowedLanguages[0] ?? "c");
@@ -86,8 +88,15 @@ export function ProblemPage() {
     setTab("output");
     setRunResult(null);
     try {
-      const r = await runCode({ language, files: filesPayload });
-      setRunResult(r);
+      if (!graderOnline) {
+        const editable = editableFiles[0]?.path;
+        const src = editable ? (buffers[editable] ?? "") : "";
+        const r = await runSmart({ language, source: src, graderOnline: false });
+        setRunResult(r);
+      } else {
+        const r = await runCode({ language, problemId: spec!.id, files: filesPayload });
+        setRunResult(r);
+      }
     } catch (e) {
       handleApiError(e);
     } finally {
@@ -96,6 +105,11 @@ export function ProblemPage() {
   }
 
   async function submit() {
+    if (!graderOnline) {
+      setTab("result");
+      setError("The grader is offline — start Piston to grade this problem. (Hidden C tests need the server.)");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     setTab("result");
@@ -190,11 +204,23 @@ export function ProblemPage() {
             <Button size="sm" variant="outline" onClick={run} disabled={running || submitting}>
               {running ? "Running…" : "Run"}
             </Button>
-            <Button size="sm" onClick={submit} disabled={running || submitting}>
+            <Button
+              size="sm"
+              onClick={submit}
+              disabled={running || submitting || !graderOnline}
+              title={!graderOnline ? "Grader offline — start Piston to grade" : undefined}
+            >
               {submitting ? "Grading…" : "Submit"}
             </Button>
           </div>
         </div>
+
+        {!graderOnline && (
+          <div className="border-b border-warn/30 bg-warn/10 px-3 py-1.5 text-xs text-warn">
+            Grader offline — graded C tests need the server (Piston). Python code can still be run in
+            your browser. Start the grader to submit.
+          </div>
+        )}
 
         {/* file tabs */}
         {(spec.starterFiles[language] ?? []).length > 1 && (

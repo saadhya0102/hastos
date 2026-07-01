@@ -73,3 +73,17 @@ export interface ExecuteRequest {
   files?: { path: string; content: string }[];
   stdin?: string;
 }
+
+export type ExecBackend = "piston" | "judge0" | "none";
+
+/** Response of GET /grader-status — drives the grader badge + WASM fallback gating. */
+export interface GraderStatus {
+  online: boolean;
+  backend: ExecBackend;
+  capabilities: {
+    sanitizers: boolean;
+    threads: boolean;
+    languages: string[];
+  };
+  note?: string;
+}

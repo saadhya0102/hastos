@@ -1,0 +1,29 @@
+# Self-hosted Piston code-execution engine for HastOS.
+#
+# Piston is a lightweight, sandboxed multi-language runner. It is the PRIMARY
+# grader for HastOS (Judge0 is an optional fallback). Run this on any always-on
+# machine (your PC, a home server, a free-tier VM) and expose it to the
+# Cloudflare Worker via a Cloudflare Tunnel (see README.md).
+#
+#   docker compose up -d
+#   ./install-packages.sh        # install language runtimes (one-time)
+#
+# API then listens on http://localhost:2000
+
+services:
+  piston:
+    image: ghcr.io/engineer-man/piston:latest
+    container_name: hastos-piston
+    restart: unless-stopped
+    # Piston needs elevated privileges to set up its isolate/cgroup sandboxes.
+    privileged: true
+    ports:
+      - "2000:2000"
+    volumes:
+      - piston_packages:/piston/packages
+    tmpfs:
+      # Executable scratch space for compiled programs.
+      - /tmp:exec,size=512M
+
+volumes:
+  piston_packages:
