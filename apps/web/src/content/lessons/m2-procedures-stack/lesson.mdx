@@ -156,6 +156,44 @@ Every `fact` call pushes a return address and frame; `fact(100000)` would exhaus
   explanation="Each call pushes a frame; the stack is finite, so unbounded depth overflows it."
 />
 
+## Tail calls
+
+If the **last** action of a function is a call whose result it returns directly, the compiler can
+reuse the current frame instead of adding a new one — a **tail-call optimization (TCO)**, emitted as a
+plain `jmp` rather than `call`. That turns tail recursion into a loop with **O(1)** stack.
+
+```c
+long fact(long n) { return n <= 1 ? 1 : n * fact(n-1); }   // NOT a tail call: must multiply AFTER
+long fact_acc(long n, long acc) {                          // tail call: return is the call itself
+  return n <= 1 ? acc : fact_acc(n-1, n*acc);
+}
+```
+
+`fact` can't be TCO'd (work remains after the recursive call — the multiply), so it grows the stack;
+`fact_acc` can become a `jmp` loop. This is why rewriting with an accumulator avoids stack overflow.
+(C compilers do TCO at `-O2` but don't *guarantee* it; languages like Scheme require it.)
+
+<KnowledgeCheck
+  id="ps-tco"
+  type="mcq"
+  prompt="Why can `fact_acc(n-1, n*acc)` be tail-call optimized while `n * fact(n-1)` cannot?"
+  options={[
+    "fact_acc has more arguments",
+    "In fact_acc the recursive call is the whole return value (nothing left to do), so the frame can be reused; fact must still multiply after the call returns",
+    "Multiplication is illegal in tail calls",
+    "They're identical"
+  ]}
+  answer={1}
+  explanation="TCO applies only when the call is in tail position (its result is returned directly). fact has pending work (the multiply), so it needs its frame preserved."
+/>
+
+## Returning large values
+
+Return values that don't fit in `rax:rdx` (e.g., a big struct) use a hidden convention: the caller
+allocates space and passes a **pointer to it as a hidden first argument** in `rdi`, shifting the real
+arguments to `rsi, rdx, ...`. The callee writes the result through that pointer and returns the
+pointer in `rax`. This is why "returning a struct by value" isn't as free as it looks.
+
 ## Recap
 
 - The stack grows down; `push`/`pop` move `rsp`; `call` pushes a return address, `ret` pops it.

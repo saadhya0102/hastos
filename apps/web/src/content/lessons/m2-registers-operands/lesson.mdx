@@ -153,6 +153,34 @@ goes in `eax`, and `ret` returns it. You just read machine code.
   explanation="Ints are 4 bytes, so +8 bytes is index 2: a[2]."
 />
 
+## Beyond GPRs: RFLAGS, RIP, and vector registers
+
+Three more register groups you'll meet:
+
+- **RFLAGS** — the condition-code register. Arithmetic/compare instructions set bits like **ZF** (zero),
+  **SF** (sign), **CF** (carry, for unsigned), and **OF** (overflow, for signed). Conditional jumps
+  read these (next lesson) — this is how `if`/loops become branches.
+- **RIP** — the instruction pointer (next instruction's address). You can't name it as a normal
+  operand, but **RIP-relative addressing** (`[rip + disp]`) lets code reference globals as an offset
+  from the current instruction — the foundation of position-independent code (Module 4).
+- **SIMD/vector registers** — `xmm0..xmm15` (128-bit), extended to `ymm` (256-bit, AVX) and `zmm`
+  (512-bit, AVX-512). One instruction operates on several packed values at once (data-level
+  parallelism), and these also hold `float`/`double` scalars in modern ABIs.
+
+<KnowledgeCheck
+  id="ro-flags"
+  type="mcq"
+  prompt="After a `cmp`/arithmetic instruction, where is the result (zero? negative? carry?) recorded so a later conditional jump can act on it?"
+  options={[
+    "In rax",
+    "In the RFLAGS condition-code register (ZF, SF, CF, OF, ...)",
+    "In rsp",
+    "In an xmm register"
+  ]}
+  answer={1}
+  explanation="Comparisons/arithmetic set RFLAGS bits (ZF/SF/CF/OF); conditional jumps (je, jl, jb, ...) branch based on those flags."
+/>
+
 ## Recap
 
 - 16 GPRs, each addressable at 64/32/16/8 bits; 32-bit writes zero the upper half.

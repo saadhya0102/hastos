@@ -146,6 +146,52 @@ unpredictable.
   explanation="cmov is branchless, so it can't be mispredicted — useful for unpredictable, cheap selections."
 />
 
+## setcc: turning a condition into a 0/1
+
+When you need a **boolean value** (not a jump), the `setcc` family writes 1 or 0 into a byte register
+based on the flags — the machine form of C's `a < b` yielding an `int`:
+
+```
+; int is_neg(int x) { return x < 0; }
+    test edi, edi
+    sets al          ; al = SF (1 if negative)
+    movzx eax, al    ; zero-extend the byte to a full int
+    ret
+```
+
+`setl`, `sete`, `setb`, etc. mirror the jump conditions. This is another branchless building block.
+
+## switch: jump tables
+
+A dense `switch` doesn't become a chain of `cmp`/`je`. The compiler builds a **jump table** — an
+array of code addresses — and does an indirect jump:
+
+```
+; switch(x) with cases 0..3
+    cmp   edi, 3
+    ja    .default        ; unsigned compare catches x<0 and x>3 in one check
+    jmp   [table + rdi*8]  ; indirect jump to the case's address
+table: .quad .case0, .case1, .case2, .case3
+```
+
+This turns an N-way branch into **O(1)** (one bounds check + one indirect jump) instead of O(N)
+comparisons. Sparse switches may instead compile to a binary search of ranges. Note the single
+**unsigned** `ja` bounds check cleverly rejects both negative and too-large indices at once.
+
+<KnowledgeCheck
+  id="cf-switch"
+  type="mcq"
+  prompt="How does a compiler typically implement a dense switch over 0..N efficiently?"
+  options={[
+    "A chain of N cmp/je comparisons",
+    "A jump table: bounds-check, then one indirect jump through an array of case addresses (O(1))",
+    "A loop",
+    "It can't; switch always becomes if-else"
+  ]}
+  answer={1}
+  explanation="A jump table indexes an array of target addresses and jumps indirectly, making a dense switch O(1) rather than O(N) comparisons."
+/>
+
 ## Recap
 
 - Flags (ZF, SF, CF, OF) summarize the last operation; `cmp` and `test` set them deliberately.

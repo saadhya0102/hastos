@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m2-machine",
   title: "Memory Layout, Buffer Overflows, and Defenses",
   order: 4,
-  estMinutes: 24,
+  estMinutes: 32,
   objectives: [
     "Explain how a stack buffer overflow can overwrite the return address",
     "Describe classic exploitation (code injection, return-oriented programming)",

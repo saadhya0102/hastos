@@ -135,6 +135,38 @@ Arguments: `a`→rdi, `i`→rsi, `k`→rdx; result in rax. The scale is 8 becaus
   explanation="Scale equals the element size; a long is 8 bytes, so a[i] is at base + i*8."
 />
 
+## Division is special (and expensive)
+
+Unlike add/mul, division uses **fixed registers** and produces two results. `idiv src` (signed)
+divides the 128-bit value in `rdx:rax` by `src`, leaving the **quotient in rax** and the **remainder
+in rdx**. You must first sign-extend `rax` into `rdx` with `cqo` (or zero it for unsigned `div`):
+
+```
+; int q = a / b;  int r = a % b;   (a in eax, b in ecx)
+    mov eax, edi
+    cdq              ; sign-extend eax into edx (edx:eax = a)
+    idiv ecx         ; eax = a/b (quotient), edx = a%b (remainder)
+```
+
+Division is one of the slowest integer ops (~20–40 cycles, often not pipelined), so compilers
+**strength-reduce** division by a *constant* into a multiply by a precomputed "magic" reciprocal plus
+shifts — which is why `x / 10` in your C shows up as a `imul` + `shr` in the disassembly, not an
+`idiv`. Division/modulo by a power of two becomes a shift/`and`.
+
+<KnowledgeCheck
+  id="da-div"
+  type="mcq"
+  prompt="After `idiv ecx` (with the dividend in edx:eax), where are the quotient and remainder?"
+  options={[
+    "Both in eax",
+    "Quotient in eax, remainder in edx",
+    "Quotient in edx, remainder in eax",
+    "In ecx"
+  ]}
+  answer={1}
+  explanation="idiv leaves the quotient in eax (rax) and the remainder in edx (rdx); you must sign-extend into edx first with cdq/cqo."
+/>
+
 ## Recap
 
 - `mov` copies values (no memory-to-memory); `movzx`/`movsx` widen unsigned/signed.

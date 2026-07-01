@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m2-machine",
   title: "Data Movement and Arithmetic",
   order: 1,
-  estMinutes: 24,
+  estMinutes: 30,
   objectives: [
     "Use mov and its sign/zero-extending variants",
     "Distinguish lea (address computation) from mov (memory access)",

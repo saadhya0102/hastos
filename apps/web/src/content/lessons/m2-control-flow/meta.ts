@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m2-machine",
   title: "Control Flow and Condition Codes",
   order: 2,
-  estMinutes: 28,
+  estMinutes: 34,
   objectives: [
     "Explain how cmp/test set condition flags",
     "Map if/else, loops, and switch to jumps",

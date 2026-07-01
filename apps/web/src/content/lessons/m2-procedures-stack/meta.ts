@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m2-machine",
   title: "Procedures, the Stack, and the ABI",
   order: 3,
-  estMinutes: 30,
+  estMinutes: 38,
   objectives: [
     "Trace how call and ret use the stack and return address",
     "Apply the System V AMD64 calling convention (argument registers, return value)",

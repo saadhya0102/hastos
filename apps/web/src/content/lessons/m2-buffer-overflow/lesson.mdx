@@ -117,6 +117,58 @@ ASLR plus an overflow).
   explanation="NX marks data pages non-executable, so attacker code written to the stack/heap can't be run directly."
 />
 
+## Beyond the stack: other memory-corruption bugs
+
+Stack overflow is the classic, but the same "write where you shouldn't" family includes:
+
+- **Heap overflow**: overrunning a `malloc`'d buffer corrupts adjacent heap metadata or objects;
+  attackers groom the heap so the overflow overwrites a function pointer or allocator bookkeeping.
+- **Use-after-free**: keeping a pointer to freed memory; if the allocator hands that block to
+  attacker-controlled data (e.g., a fake object with a hijacked vtable/function pointer), a later call
+  through it executes attacker code. **Double-free** similarly corrupts allocator state.
+- **Format-string bug**: `printf(user_input)` (instead of `printf("%s", user_input)`) lets attacker
+  `%x`/`%n` specifiers read the stack or *write* to memory.
+- **Integer overflow → overflow**: a size computation that wraps (Module 1) allocates too little, then
+  a copy overruns it — an integer bug becoming a memory bug.
+
+<KnowledgeCheck
+  id="bo-uaf"
+  type="mcq"
+  prompt="How can a use-after-free become code execution?"
+  options={[
+    "It can't; it only crashes",
+    "The freed block is reallocated with attacker-controlled data (e.g., a fake object/function pointer), and a later use dereferences it",
+    "It disables ASLR",
+    "It overflows the stack canary"
+  ]}
+  answer={1}
+  explanation="After free, the allocator may reuse the block; if the program still calls through the stale pointer and the block now holds attacker data (like a hijacked vtable), control flow is hijacked."
+/>
+
+## Newer defenses: CFI and shadow stacks
+
+Beyond canaries/NX/ASLR, modern toolchains add control-flow protections that specifically target ROP:
+
+- **CFI (Control-Flow Integrity)**: the compiler restricts indirect calls/jumps to a set of *valid*
+  targets, so a corrupted function pointer can't jump to an arbitrary gadget.
+- **Shadow stacks / Intel CET**: a protected second copy of return addresses is checked against the
+  real stack on `ret`; a mismatch (from an overwrite) aborts — directly defeating ROP's overwritten
+  return addresses.
+
+<KnowledgeCheck
+  id="bo-shadow"
+  type="mcq"
+  prompt="How does a shadow stack (e.g., Intel CET) defeat classic ROP?"
+  options={[
+    "It encrypts the heap",
+    "It keeps a protected copy of return addresses and aborts if the on-stack return address was tampered with",
+    "It makes the stack executable",
+    "It disables function calls"
+  ]}
+  answer={1}
+  explanation="ROP works by overwriting saved return addresses; a shadow stack cross-checks each ret against an untamperable copy, catching the overwrite."
+/>
+
 ## Writing safe code
 
 The real fix is to never overflow in the first place:
@@ -127,10 +179,11 @@ The real fix is to never overflow in the first place:
 - Prefer memory-safe languages (Rust) where the domain allows.
 
 <Aside kind="note">
-HastOS compiles submissions with **AddressSanitizer**, which detects out-of-bounds stack/heap
-writes at runtime and reports them precisely. If your `memcpy`-style code writes one byte too
-far, ASan will tell you exactly where — turning a silent, exploitable bug into an immediate,
-fixable error.
+On a sanitizer-capable grader (Judge0), HastOS compiles submissions with **AddressSanitizer**, which
+detects out-of-bounds stack/heap writes at runtime and reports them precisely — if your `memcpy`-style
+code writes one byte too far, ASan tells you exactly where. The lightweight Piston grader can't inject
+that flag, so it catches such bugs only when they change the test output; either way, bounds
+discipline is the real fix.
 </Aside>
 
 ## Recap

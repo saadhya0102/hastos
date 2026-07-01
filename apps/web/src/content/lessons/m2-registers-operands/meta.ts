@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m2-machine",
   title: "Registers and Operands",
   order: 0,
-  estMinutes: 26,
+  estMinutes: 32,
   objectives: [
     "Name the x86-64 general-purpose registers and their sub-register forms",
     "Read the three operand types: immediate, register, and memory",
