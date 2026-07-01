@@ -109,6 +109,35 @@ processes (interleaved) but only 1 in true parallel.
   explanation="Concurrency is about structure/interleaving (even on one core); parallelism is literal simultaneous execution on multiple cores."
 />
 
+## Processes vs. threads
+
+A **thread** is a schedulable flow of control; a **process** is threads plus an address space and
+resources. The key distinction:
+
+- **Processes** have **separate address spaces** — isolated (a crash/corruption in one can't touch
+  another), but communication needs IPC (pipes, shared memory, sockets) and creation is heavier.
+- **Threads** within a process **share** the address space (heap, globals, file descriptors) but have
+  **private stacks and registers** — cheap to create and communicate (just shared memory), but a bug
+  in one thread can corrupt the whole process, and sharing means synchronization (Module 7).
+
+On Linux both are created by the same underlying `clone` syscall; a thread is just a "process" that
+shares more with its creator. The trade-off is **isolation vs. cheap sharing** — pick processes for
+fault isolation/security, threads for tight cooperation and low overhead.
+
+<KnowledgeCheck
+  id="pr-thread"
+  type="mcq"
+  prompt="What is the main difference between threads and processes?"
+  options={[
+    "Threads are always faster to run",
+    "Threads share one address space (cheap sharing, but a bug can corrupt the whole process); processes have separate, isolated address spaces (safer, but need IPC)",
+    "Processes can't do I/O",
+    "Threads can't be scheduled"
+  ]}
+  answer={1}
+  explanation="Threads share memory within a process (cheap communication, needs synchronization, no isolation); processes are isolated address spaces (fault/security isolation, heavier, IPC to communicate)."
+/>
+
 ## Recap
 
 - A process gives the illusions of a private CPU (logical control flow) and private memory.

@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m5-processes",
   title: "Pipes and Building a Tiny Shell",
   order: 4,
-  estMinutes: 26,
+  estMinutes: 34,
   objectives: [
     "Explain file descriptors and the role of dup2",
     "Use pipe() to connect two processes",

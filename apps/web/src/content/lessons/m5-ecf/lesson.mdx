@@ -104,6 +104,40 @@ save/restore). That's why high-performance I/O batches work (e.g., read big buff
 `epoll`/io_uring) to amortize syscall overhead — a theme you'll revisit in networking.
 </Aside>
 
+## How a syscall is actually made (and the vDSO)
+
+Mechanically, the C wrapper puts the **syscall number in `rax`** and arguments in
+`rdi, rsi, rdx, r10, r8, r9` (note: `r10`, not `rcx` — the `syscall` instruction clobbers `rcx`/`r11`),
+executes `syscall`, and reads the result back from `rax` (negative values encode `errno`).
+
+```
+; write(1, buf, len)
+    mov rax, 1        ; syscall number for write
+    mov rdi, 1        ; fd = stdout
+    mov rsi, buf
+    mov rdx, len
+    syscall           ; trap into the kernel; result in rax
+```
+
+Because crossing into the kernel is expensive, Linux maps a **vDSO** (virtual dynamic shared object)
+into every process: a bit of kernel-provided code + data that answers a few hot "syscalls" (like
+`clock_gettime`, `gettimeofday`) **entirely in user space**, with no mode switch. So not every
+libc call that looks like a syscall actually traps.
+
+<KnowledgeCheck
+  id="ecf-vdso"
+  type="mcq"
+  prompt="Why does Linux provide a vDSO mapped into every process?"
+  options={[
+    "To make binaries larger",
+    "To serve a few hot 'syscalls' (e.g., clock_gettime) from user space without the cost of a real kernel trap",
+    "To replace the C library",
+    "To randomize addresses"
+  ]}
+  answer={1}
+  explanation="The vDSO exposes kernel-maintained data/code so frequent, read-only queries like the time can be answered in user mode, avoiding the mode-switch cost of a real syscall."
+/>
+
 ## Recap
 
 - ECF diverts normal control flow to handle events; it underlies multitasking, I/O, and VM.

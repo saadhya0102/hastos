@@ -145,6 +145,34 @@ Or install handlers with `SA_RESTART` so the kernel auto-restarts many interrupt
   explanation="EINTR means a signal interrupted the blocking call; the standard fix is to retry (or use SA_RESTART)."
 />
 
+## Blocking signals and the self-pipe trick
+
+You don't always want a signal to fire *right now*. Each process/thread has a **signal mask** —
+signals that are temporarily **blocked** stay **pending** until unblocked (managed with
+`sigprocmask`/`pthread_sigmask`). This lets you protect a critical section from a handler running in
+the middle of it.
+
+But the deeper problem is mixing signals with an **event loop** (`select`/`poll`/`epoll`): a signal
+arriving while you're blocked in `select` is awkward, and handlers can't safely do real work. The
+classic fix is the **self-pipe trick**: the handler just does one async-signal-safe `write` of a byte
+to a pipe; the event loop watches the pipe's read end like any other fd, so the signal becomes a
+normal, synchronous "readable fd" event handled in your main loop. (Linux's `signalfd` packages this
+idea directly.)
+
+<KnowledgeCheck
+  id="sg-selfpipe"
+  type="mcq"
+  prompt="What problem does the self-pipe trick (or signalfd) solve?"
+  options={[
+    "It makes signals faster",
+    "It converts an async signal into a normal readable-fd event so an event loop (select/poll/epoll) can handle it synchronously and safely",
+    "It blocks all signals permanently",
+    "It replaces sigaction"
+  ]}
+  answer={1}
+  explanation="A handler can only safely do tiny async-signal-safe work; writing one byte to a pipe turns the signal into an fd event the main loop already knows how to wait on and handle."
+/>
+
 ## Recap
 
 - Signals are asynchronous software interrupts; some (SIGKILL/SIGSTOP) can't be caught.

@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m5-processes",
   title: "Processes and Context Switches",
   order: 1,
-  estMinutes: 20,
+  estMinutes: 26,
   objectives: [
     "Define a process and the illusions it provides",
     "Explain the process control block and process states",

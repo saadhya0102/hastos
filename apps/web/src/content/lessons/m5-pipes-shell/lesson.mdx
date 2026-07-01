@@ -141,6 +141,39 @@ must change the shell's own state.
   explanation="Directory changes apply per-process; a child's chdir dies with the child, so the shell must call chdir itself."
 />
 
+## Other IPC, and job control
+
+Pipes are one of several **inter-process communication** channels, each with a niche:
+
+- **Pipe** (anonymous): one-way byte stream between related (fork'd) processes.
+- **FIFO / named pipe**: like a pipe but with a filesystem name, so *unrelated* processes can connect.
+- **Unix-domain socket**: bidirectional, can pass **file descriptors** between processes, the backbone
+  of local RPC (e.g., Docker, X11).
+- **Shared memory** (`shm_open`+`mmap`): fastest — processes map the same physical pages and share
+  data directly (needs synchronization, Module 7).
+- **Message queue / signals**: small structured messages / notifications.
+
+Rule of thumb: **streams** (pipes/sockets) for producer→consumer plumbing; **shared memory** when you
+need maximum throughput and are willing to synchronize.
+
+Shells also implement **job control** via **process groups**: a pipeline is one group; the terminal
+delivers `Ctrl-C` (SIGINT) / `Ctrl-Z` (SIGTSTP) to the **foreground** group, and `fg`/`bg` move groups
+between foreground and background — which is why `Ctrl-C` kills the whole pipeline, not just one stage.
+
+<KnowledgeCheck
+  id="ps-ipc"
+  type="mcq"
+  prompt="Which IPC mechanism lets two UNRELATED processes share data with the highest throughput?"
+  options={[
+    "An anonymous pipe",
+    "Shared memory (shm_open + mmap the same pages), with their own synchronization",
+    "Signals",
+    "A return value"
+  ]}
+  answer={1}
+  explanation="Anonymous pipes need a shared ancestor and copy through the kernel; shared memory maps the same physical pages into both processes for direct, copy-free access (you add synchronization)."
+/>
+
 ## Recap
 
 - Processes do I/O through file descriptors (0/1/2 = stdin/stdout/stderr).

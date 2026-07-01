@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m5-processes",
   title: "Creating Processes: fork, exec, and wait",
   order: 2,
-  estMinutes: 30,
+  estMinutes: 38,
   objectives: [
     "Use fork() and reason about its 'returns twice' behavior",
     "Predict the number of processes/prints from fork trees",

@@ -144,6 +144,61 @@ orphans don't leak, but zombies (parent alive, not reaping) do.
   explanation="Orphans are adopted by init/PID 1, which reaps them — so orphans don't leak; unreaped zombies (parent alive) do."
 />
 
+## Why fork is cheap: copy-on-write
+
+Cloning the parent's entire address space eagerly would make `fork` slow — and pointless when the
+child immediately `exec`s a different program. Instead the kernel uses **copy-on-write (COW)**: parent
+and child **share** the same physical pages, marked read-only, right after `fork`. Reads are free;
+only when one side **writes** does the kernel fault, copy that one page, and continue. So `fork` copies
+just page tables up front, and `fork`+`exec` barely copies anything before the address space is
+replaced. (Full detail in the virtual-memory module.)
+
+<KnowledgeCheck
+  id="fe-cow"
+  type="mcq"
+  prompt="Why is fork() fast even though the child appears to get a full copy of the parent's memory?"
+  options={[
+    "It doesn't copy anything, ever",
+    "Copy-on-write: pages are shared read-only and only duplicated when one side writes, so fork mostly just copies page tables",
+    "The child shares the parent's memory permanently",
+    "Memory is copied lazily to disk"
+  ]}
+  answer={1}
+  explanation="COW shares pages read-only after fork and copies a page only on the first write, so fork avoids eagerly duplicating the whole address space."
+/>
+
+## The shell loop: fork + exec + wait
+
+These three compose into how a shell runs a command: **fork** a child, the child **exec**s the
+program, and the parent **wait**s (for a foreground command) or continues (for a background `&` job).
+
+```c
+pid_t pid = fork();
+if (pid == 0) {                 // child
+  execvp(argv[0], argv);        // become the program
+  perror("exec"); _exit(127);   // only reached if exec failed
+}
+int status;                     // parent
+if (!background) waitpid(pid, &status, 0);   // foreground: wait; background: don't
+```
+
+That's the core of the tiny shell you'll build — plus wiring file descriptors for redirection and
+pipes (next lesson).
+
+<KnowledgeCheck
+  id="fe-shell"
+  type="mcq"
+  prompt="How does a shell run an external command like `ls`?"
+  options={[
+    "It calls the ls function directly",
+    "fork a child, the child execs ls, and the parent waits for it (foreground) or continues (background)",
+    "It execs ls in the shell process itself",
+    "It creates a thread"
+  ]}
+  answer={1}
+  explanation="The fork+exec+wait trio: fork a child so the shell survives, exec replaces the child with the program, and the parent reaps it (or not, for background jobs)."
+/>
+
 ## Recap
 
 - `fork` clones the process and returns twice: child PID to parent, 0 to child.

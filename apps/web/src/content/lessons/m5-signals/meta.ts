@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m5-processes",
   title: "Signals and Async-Safety",
   order: 3,
-  estMinutes: 26,
+  estMinutes: 34,
   objectives: [
     "Explain signals as asynchronous software interrupts",
     "Install handlers and reason about when they run",

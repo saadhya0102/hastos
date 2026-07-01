@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m5-processes",
   title: "Exceptional Control Flow: Exceptions, Interrupts, Traps",
   order: 0,
-  estMinutes: 20,
+  estMinutes: 26,
   objectives: [
     "Define exceptional control flow and why it exists",
     "Classify exceptions: interrupts, traps, faults, and aborts",
