@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m4-linking",
   title: "Static vs. Dynamic Libraries",
   order: 2,
-  estMinutes: 22,
+  estMinutes: 30,
   objectives: [
     "Contrast static archives (.a) with shared libraries (.so)",
     "Explain why linker command-line order matters for static libraries",

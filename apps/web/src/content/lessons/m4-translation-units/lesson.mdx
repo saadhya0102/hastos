@@ -59,6 +59,62 @@ int square(int x){return x*x;} // definition (the real thing)
   explanation="`int g = 5;` allocates storage and gives a value — a definition. The others are promises (declarations)."
 />
 
+## Internal vs. external linkage (the `static` keyword)
+
+Every top-level name has a **linkage** that decides whether the linker can see it across units:
+
+- **External linkage** (the default for globals and functions): the name is visible to *other*
+  translation units. Two units can refer to the same `int counter;` or `void log_msg(void);`.
+- **Internal linkage** (`static` at file scope): the name is **private to its translation unit**.
+  Two files can each have `static int helper(void)` with *different* bodies and never collide.
+- **No linkage**: locals inside a function.
+
+`static` at file scope is C's module-privacy tool — mark every function/global that isn't part of a
+file's public API as `static`, and the linker treats each as invisible to the rest of the program.
+This both prevents accidental name clashes and lets the compiler optimize more aggressively.
+
+<KnowledgeCheck
+  id="tu-static"
+  type="mcq"
+  prompt="What does marking a file-scope function `static` do?"
+  options={[
+    "Makes it run faster at runtime only",
+    "Gives it internal linkage — private to its translation unit, invisible to the linker's cross-unit resolution",
+    "Allocates it once and never frees it",
+    "Exports it to all other files"
+  ]}
+  answer={1}
+  explanation="File-scope `static` = internal linkage: the symbol is local to that .c file, so other units can't see it and can define their own same-named statics."
+/>
+
+## The preprocessor and include guards
+
+The translation unit is built by the **preprocessor** first: it pastes in `#include`d files
+textually, expands macros, and resolves conditionals (`#ifdef`). Because `#include` is literal text
+substitution, including a header twice would paste its contents twice — re-declaring types and
+causing errors. The fix is an **include guard** (or `#pragma once`):
+
+```c
+#ifndef UTIL_H     // include guard: compile the body only the first time
+#define UTIL_H
+int square(int);
+#endif
+```
+
+<KnowledgeCheck
+  id="tu-guard"
+  type="mcq"
+  prompt="Why do headers use include guards (#ifndef/#define/#endif)?"
+  options={[
+    "To speed up runtime",
+    "So a header included multiple times in one translation unit is only processed once (no duplicate declarations/types)",
+    "To hide the header from the linker",
+    "To define global variables safely"
+  ]}
+  answer={1}
+  explanation="#include is textual; without a guard, including a header twice re-pastes its contents, causing duplicate-definition/type errors within the unit."
+/>
+
 ## Why headers and .c files split this way
 
 The convention falls directly out of the rules above:

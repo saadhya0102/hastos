@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m4-linking",
   title: "Symbols: Strong, Weak, and Resolution",
   order: 1,
-  estMinutes: 24,
+  estMinutes: 32,
   objectives: [
     "Define symbols and the symbol table in object files",
     "Distinguish strong from weak symbols",

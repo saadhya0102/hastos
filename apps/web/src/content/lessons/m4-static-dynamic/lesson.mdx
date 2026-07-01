@@ -123,6 +123,41 @@ musl-static C) favor static linking.
   explanation="With dynamic linking, replacing the shared .so fixes every program that loads it; static binaries would each need relinking."
 />
 
+## Finding the .so at runtime: sonames and search paths
+
+Dynamic linking adds a deployment question static linking doesn't have: *which* `.so`, and *where*?
+
+- **soname**: a shared library records a versioned name like `libssl.so.3`. The executable records a
+  dependency on that soname, so an incompatible `libssl.so.4` won't be picked up by accident. A dev
+  symlink `libssl.so` → `libssl.so.3` is used at link time; the soname is used at run time.
+- **Search order** for `ld.so`: `DT_RPATH` (legacy) → `LD_LIBRARY_PATH` (env, handy for dev, unsafe
+  for setuid) → `DT_RUNPATH` (baked into the binary) → the `ldconfig` cache (`/etc/ld.so.cache`) →
+  default dirs (`/lib`, `/usr/lib`). You can inspect what a binary will load with `ldd ./app`.
+- **"DLL hell" / diamond problems**: if two dependencies need different, incompatible versions of the
+  same library, dynamic linking can't satisfy both — the flip side of the "update one file" benefit.
+
+<KnowledgeCheck
+  id="sd-soname"
+  type="mcq"
+  prompt="What problem does a library's soname (e.g., libssl.so.3) solve?"
+  options={[
+    "It makes the library smaller",
+    "It records a versioned dependency so a program only loads an ABI-compatible version at runtime",
+    "It statically links the library",
+    "It disables ASLR"
+  ]}
+  answer={1}
+  explanation="The soname ties the executable to a specific compatible major version, so an incompatible upgrade isn't silently loaded."
+/>
+
+## Security angle
+
+Shared, position-independent libraries are what make **ASLR** (address-space layout randomization)
+possible — the loader can place `libc` at a random address each run, so an attacker can't hardcode
+gadget addresses. Modern toolchains build executables as **PIE** (position-independent executables)
+for the same reason (next lesson). Fully static binaries trade some of this flexibility for
+self-containment.
+
 ## Recap
 
 - Static `.a` = archive of objects; needed members are copied into the executable; mind link

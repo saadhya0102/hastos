@@ -110,6 +110,65 @@ When you run a program, the OS **loader** (`execve` + the dynamic linker `ld.so`
   explanation="The loader maps segments, loads dependencies, zeroes .bss, sets up the stack, and transfers control to _start/main."
 />
 
+## Kinds of relocations
+
+Relocation entries come in flavors depending on *how* the address is encoded:
+
+- **Absolute** (e.g., `R_X86_64_64`) — write the full runtime address. Simple, but not
+  position-independent (the value depends on the load base).
+- **PC-relative** (e.g., `R_X86_64_PC32`, `...PLT32`) — write an **offset** from the current
+  instruction to the target. Since it's a *distance*, it stays valid no matter where the code loads —
+  the foundation of PIC. Most intra-module calls compile to PC-relative.
+- **GOT/PLT relocations** (`GLOB_DAT`, `JUMP_SLOT`) — fill GOT slots with the runtime addresses of
+  external data/functions; these are what the dynamic linker patches at load (or first call).
+
+<KnowledgeCheck
+  id="rl-pcrel"
+  type="mcq"
+  prompt="Why does position-independent code favor PC-relative relocations over absolute ones?"
+  options={[
+    "They are shorter to encode",
+    "A PC-relative offset (a distance to the target) stays correct no matter what base address the code is loaded at",
+    "They run faster on all CPUs",
+    "Absolute relocations don't exist on x86-64"
+  ]}
+  answer={1}
+  explanation="Encoding a relative distance rather than an absolute address means the reference is valid at any load base — exactly what PIC/ASLR need."
+/>
+
+## ELF: segments vs sections, and the startup chain
+
+An ELF file is described two ways: **section headers** (fine-grained: `.text`, `.data`, ... — used by
+the *linker*) and **program headers/segments** (coarse: which chunks to `mmap` with which
+permissions — used by the *loader*). Multiple sections fold into one loadable segment sharing
+permissions.
+
+At startup the control flow is `_start` → `__libc_start_main` → **run constructors** (pointers in
+`.init_array`, e.g. C++ global ctors and `__attribute__((constructor))` functions) → `main` → on
+return, run destructors (`.fini_array`) and `exit`. So "before main" is a real, observable phase.
+
+## Hardening the GOT: RELRO
+
+Because the GOT holds function pointers the CPU jumps through, an attacker who can overwrite a GOT
+entry can hijack control flow. **RELRO** (Relocation Read-Only) mitigates this: **partial RELRO**
+reorders and read-only-marks some ELF metadata; **full RELRO** (`-Wl,-z,relro,-z,now`) resolves *all*
+dynamic symbols eagerly at load (disabling lazy PLT binding) and then makes the GOT **read-only**, so
+it can't be tampered with at runtime.
+
+<KnowledgeCheck
+  id="rl-relro"
+  type="mcq"
+  prompt="What does 'full RELRO' do to protect a program?"
+  options={[
+    "Compresses the GOT",
+    "Resolves all dynamic symbols at load and marks the GOT read-only, preventing GOT-overwrite control-flow hijacks",
+    "Disables ASLR",
+    "Removes the PLT entirely at compile time"
+  ]}
+  answer={1}
+  explanation="Full RELRO binds symbols eagerly (no lazy PLT) then makes the GOT read-only, so an attacker can't overwrite its function pointers."
+/>
+
 ## PIE and security (ASLR)
 
 A **Position-Independent Executable (PIE)** applies PIC to the *main program* too, so even its

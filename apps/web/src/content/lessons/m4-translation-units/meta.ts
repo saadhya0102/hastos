@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m4-linking",
   title: "Translation Units, Declarations, and Definitions",
   order: 0,
-  estMinutes: 22,
+  estMinutes: 30,
   objectives: [
     "Define a translation unit and how the compiler processes one at a time",
     "Distinguish declarations from definitions and apply the one-definition rule",

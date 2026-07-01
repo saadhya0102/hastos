@@ -121,6 +121,43 @@ default in modern GCC/Clang) so tentative definitions become errors, and keep fi
   explanation="Strong beats weak (rule 2), so x binds to the double — a silent, type-confused alias that corrupts memory."
 />
 
+## Link order matters (with static libraries)
+
+The traditional Unix linker processes inputs **left to right**, carrying a set of *currently
+undefined* symbols. When it reaches a static library (`.a`), it pulls in **only the members that
+resolve a currently-undefined symbol**. The trap: if you list the library *before* the object that
+needs it, the needed symbol isn't undefined yet, so the linker skips the member — and you get an
+`undefined reference` even though the definition was "right there."
+
+```
+gcc main.o -lm            # OK: main.o's undefined 'sin' pulls libm's member
+gcc -lm main.o            # may FAIL: at -lm, 'sin' isn't referenced yet -> skipped
+```
+
+Rule of thumb: **put libraries after the objects that use them**, and order libraries so each comes
+after the ones that depend on it (or use `--start-group` for cyclic dependencies).
+
+<KnowledgeCheck
+  id="sy-order"
+  type="mcq"
+  prompt="Why can `gcc -lm main.o` fail with 'undefined reference to sin' while `gcc main.o -lm` works?"
+  options={[
+    "libm is broken",
+    "The linker pulls static-library members only to satisfy currently-undefined symbols; if -lm comes first, sin isn't referenced yet, so the member is skipped",
+    "main.o must be compiled with -lm",
+    "sin is a weak symbol"
+  ]}
+  answer={1}
+  explanation="Left-to-right processing means a library only contributes members that resolve already-pending undefined symbols; list libraries after the objects that need them."
+/>
+
+## A note on C++ name mangling
+
+C symbols are just their names, so `void f(int)` and `void f(double)` would collide — which is why C
+has no overloading. C++ **mangles** names to encode types (`_Z1fi`, `_Z1fd`), giving each overload a
+unique symbol. This is also why you wrap C headers in `extern "C"` when calling C from C++: it tells
+the C++ compiler *not* to mangle those names so they match the C definitions.
+
 ## Recap
 
 - Object files carry a symbol table: defined, undefined, or local symbols.

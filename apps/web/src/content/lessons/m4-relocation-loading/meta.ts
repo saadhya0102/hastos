@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m4-linking",
   title: "Relocation, PIC/PIE, and the Loader",
   order: 3,
-  estMinutes: 22,
+  estMinutes: 32,
   objectives: [
     "Explain relocation: fixing up addresses when sections are placed",
     "Describe position-independent code (PIC) and the GOT/PLT",
