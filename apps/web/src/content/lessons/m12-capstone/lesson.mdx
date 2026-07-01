@@ -80,6 +80,39 @@ When you compose subsystems, watch the seams:
 
 These are exactly the judgment calls senior systems engineers (and interviewers) care about.
 
+## Debugging and observing a real system
+
+Building it is half the job; **seeing inside** it when it misbehaves is the other half. Know the
+toolkit and when to reach for each:
+
+- **`perf`** — sample where CPU time goes; render a **flame graph** to spot hot paths. Also `perf
+  c2c` for false sharing, `perf stat` for cache/branch miss counters.
+- **`strace`** — trace system calls; reveals surprising syscall storms, `EINTR`, blocking, and which
+  file/socket a program actually touches.
+- **`gdb`** — inspect a hang/crash: `bt` for the backtrace, examine which lock a thread is stuck on.
+- **`valgrind` / sanitizers** — memory errors and races.
+- **Metrics/tracing** — latency **percentiles** (p50/p99, not just averages — tail latency is what
+  users feel), queue depths, error rates.
+
+A methodology for "it's slow": **measure before changing**, find the actual bottleneck (don't guess),
+fix the biggest one, then re-measure. The **USE method** (for each resource: **U**tilization,
+**S**aturation, **E**rrors) is a fast triage checklist. Optimizing an innocent layer while the real
+bottleneck is elsewhere is the most common wasted effort.
+
+<KnowledgeCheck
+  id="cap-p99"
+  type="mcq"
+  prompt="Why do systems engineers track p99 latency, not just average latency?"
+  options={[
+    "p99 is easier to compute",
+    "Averages hide the tail; the slowest ~1% of requests (p99) often dominate user-perceived pain and reveal contention/GC/queueing issues",
+    "Average is always higher",
+    "They're the same thing"
+  ]}
+  answer={1}
+  explanation="A good average can mask a terrible tail; p99/p999 expose the outliers (lock contention, GC pauses, queueing) that real users hit and that averages smooth away."
+/>
+
 ## Recap
 
 - Real systems compose every layer; correctness and performance are end-to-end.

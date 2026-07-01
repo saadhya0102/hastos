@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m12-capstone",
   title: "Acing Systems Interviews",
   order: 1,
-  estMinutes: 20,
+  estMinutes: 28,
   objectives: [
     "Know the canonical systems-implementation problems and where to practice them",
     "Structure your approach: clarify, design, implement, test, discuss trade-offs",

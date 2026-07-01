@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m12-capstone",
   title: "Capstone: Putting It All Together",
   order: 0,
-  estMinutes: 18,
+  estMinutes: 26,
   objectives: [
     "Synthesize the course modules into end-to-end systems",
     "Pick a capstone project that combines multiple subsystems",
