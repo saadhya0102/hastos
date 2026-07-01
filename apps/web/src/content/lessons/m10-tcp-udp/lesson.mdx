@@ -83,6 +83,64 @@ in **TIME_WAIT** briefly to ensure stray packets drain.
   explanation="Nagle batches small sends to cut overhead but adds latency; TCP_NODELAY turns it off for interactive traffic."
 />
 
+## TCP is a byte stream: you must frame messages
+
+A subtle but critical point: TCP has **no message boundaries**. If the sender does two `write`s of
+100 bytes, the receiver might `read` 200 at once, or 37 then 163 — TCP only promises the *bytes* arrive
+in order. So application protocols must add their own **framing**:
+
+- **Length prefix**: send a fixed-size length, then that many bytes (simple, robust).
+- **Delimiter**: end each message with a marker like `\r\n` (HTTP headers, Redis).
+
+Forgetting this yields the classic bug where a parser "usually works" (small messages arrive in one
+read) then breaks under load or large payloads. UDP, by contrast, *preserves* boundaries (one
+`sendto` = one `recvfrom`), but caps message size and can drop them.
+
+<KnowledgeCheck
+  id="tu-framing"
+  type="mcq"
+  prompt="Why must an application protocol over TCP add its own message framing (length prefix or delimiter)?"
+  options={[
+    "TCP encrypts messages",
+    "TCP is a byte stream with no message boundaries — one read may return part of a message or several messages concatenated",
+    "TCP messages are too small",
+    "It doesn't; TCP preserves boundaries"
+  ]}
+  answer={1}
+  explanation="TCP guarantees ordered bytes, not message boundaries; a read can split or merge sends, so you delimit or length-prefix messages to reassemble them."
+/>
+
+## Congestion control in a bit more depth
+
+TCP's congestion control keeps the internet from collapsing by adapting a **congestion window
+(cwnd)**:
+
+- **Slow start**: begin small, **double** cwnd each round-trip (exponential) to quickly find
+  capacity.
+- **Congestion avoidance**: past a threshold, grow **linearly** (additive increase).
+- **On loss**: cut cwnd sharply (multiplicative decrease) — the **AIMD** pattern (additive-increase,
+  multiplicative-decrease) that converges to a fair share.
+- **Fast retransmit/recovery**: three duplicate ACKs signal a lost segment; resend it immediately
+  without waiting for a timeout.
+
+Loss is treated as the congestion signal, which is why a single lossy link throttles throughput, and
+why **head-of-line blocking** (one lost segment stalls everything behind it in the stream) motivated
+**QUIC** (HTTP/3) to run independent streams over UDP.
+
+<KnowledgeCheck
+  id="tu-aimd"
+  type="mcq"
+  prompt="What does TCP do to its congestion window on detecting packet loss (AIMD)?"
+  options={[
+    "Doubles it",
+    "Multiplicatively decreases it (cuts it sharply), then resumes additive increase",
+    "Ignores the loss",
+    "Closes the connection"
+  ]}
+  answer={1}
+  explanation="AIMD: additive increase while things are fine, multiplicative decrease on loss — cutting cwnd on loss backs off quickly and converges to a fair, stable share."
+/>
+
 ## Choosing a transport
 
 - **TCP**: when you need reliability and ordering — web, APIs, file transfer, databases.

@@ -98,6 +98,35 @@ The readiness API matters at scale:
 Modern designs often combine them: an event loop per core (e.g., several threads each running their
 own epoll loop), getting both multicore parallelism and per-thread efficiency.
 
+## Level- vs edge-triggered, and readiness vs completion
+
+Two refinements you'll hit building event loops:
+
+- **Level-triggered** (default): `epoll_wait` keeps reporting a socket as ready **as long as** data
+  remains — forgiving, you can read a little each time. **Edge-triggered** (`EPOLLET`): reports only
+  on a **transition** (new data arrived), so you **must drain** the socket in a loop until `EAGAIN`
+  or you'll miss data. Edge-triggered means fewer wakeups (higher performance) but is easier to get
+  wrong.
+- **Readiness vs. completion**: epoll/kqueue are **readiness** models ("the socket is ready, now *you*
+  do the I/O"). Newer **completion** models — Linux **`io_uring`**, Windows IOCP — flip it: you submit
+  I/O requests and the kernel notifies you when they've *completed*, batching submissions/completions
+  through shared ring buffers to slash syscall overhead. This is the current frontier for
+  high-throughput servers and storage.
+
+<KnowledgeCheck
+  id="cm-et"
+  type="mcq"
+  prompt="With edge-triggered epoll (EPOLLET), what must your handler do when a socket becomes readable?"
+  options={[
+    "Read once and return",
+    "Drain the socket in a loop until read returns EAGAIN, because you won't be notified again until new data arrives",
+    "Close the socket",
+    "Nothing special"
+  ]}
+  answer={1}
+  explanation="Edge-triggered fires only on a readiness transition, so leftover unread data won't re-notify; you must read until EAGAIN to consume everything available."
+/>
+
 ## Recap
 
 - Process-per-connection: isolated but heavy; thread-per-connection: lighter, still limited at huge

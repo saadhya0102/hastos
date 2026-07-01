@@ -115,6 +115,36 @@ ssize_t read_n(int fd, void *buf, size_t n) {
   explanation="TCP preserves byte order/delivery but not message boundaries; apps must loop for N bytes and frame messages (length prefix or delimiter)."
 />
 
+## Addresses, byte order, and name resolution
+
+Two practical details bite everyone:
+
+- **Network byte order**: multi-byte fields in addresses/ports travel **big-endian** on the wire. You
+  must convert host↔network with `htons`/`htonl` (host-to-network) and `ntohs`/`ntohl`. Forgetting
+  makes a port like 8080 bind to some scrambled number.
+- **Name resolution with `getaddrinfo`**: rather than hand-build `sockaddr_in`, call `getaddrinfo("example.com",
+  "443", &hints, &res)`. It returns a linked list of address candidates (IPv4 *and* IPv6); you loop,
+  trying `socket`+`connect` on each until one works. This makes your code **IP-version-agnostic** —
+  the modern, correct way to write clients.
+
+Also useful: **`SO_REUSEADDR`** (a `setsockopt` before `bind`) lets a server re-bind its port
+immediately after restart instead of failing with "address already in use" while the old connection
+sits in `TIME_WAIT`.
+
+<KnowledgeCheck
+  id="sk-htons"
+  type="mcq"
+  prompt="Why do you wrap a port number in htons() before putting it in a sockaddr?"
+  options={[
+    "To encrypt it",
+    "To convert host byte order to network (big-endian) byte order, which is what the wire format requires",
+    "To make it a string",
+    "htons is optional"
+  ]}
+  answer={1}
+  explanation="Protocol fields use network (big-endian) byte order; htons/htonl convert from the host's native order so the value is interpreted correctly on the wire."
+/>
+
 ## Recap
 
 - A socket is a file descriptor; use read/write once connected.

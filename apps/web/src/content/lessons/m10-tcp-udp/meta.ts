@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m10-networking",
   title: "TCP vs. UDP",
   order: 2,
-  estMinutes: 24,
+  estMinutes: 32,
   objectives: [
     "Contrast TCP's guarantees with UDP's best-effort model",
     "Explain the TCP handshake and teardown",

@@ -78,6 +78,61 @@ distinct. This is why one listening socket can fan out to many connected sockets
   explanation="Connections are demultiplexed by the full 5-tuple, so many clients can share one server port."
 />
 
+## Encapsulation: how the layers wrap data
+
+Each layer **wraps** the layer above it with its own header (and strips it on the way up) —
+**encapsulation**. Your HTTP bytes become a TCP segment, inside an IP packet, inside an Ethernet
+frame:
+
+```
+[ Ethernet [ IP [ TCP [ HTTP payload ] ] ] ]
+   link       net   transport  application
+```
+
+At the destination, each layer peels its header and hands the rest up. This layering is why you can
+swap Wi-Fi for Ethernet (different link layer) without changing your HTTP code, and why a router only
+needs to look at the IP header, not your application data.
+
+<KnowledgeCheck
+  id="cs-encap"
+  type="mcq"
+  prompt="What is encapsulation in the network stack?"
+  options={[
+    "Encrypting the payload",
+    "Each layer wrapping the data from the layer above with its own header (Ethernet<IP<TCP<HTTP>>), peeled off in reverse at the receiver",
+    "Compressing packets",
+    "Splitting data into files"
+  ]}
+  answer={1}
+  explanation="Lower layers prepend their own headers around the upper layer's data and remove them on receipt, so each layer is independent and swappable."
+/>
+
+## Names, DNS, and NAT
+
+Two pieces make the internet usable at human scale:
+
+- **DNS** translates a name like `example.com` into an IP address (a distributed, cached hierarchy of
+  name servers). "Connect to example.com" first does a DNS lookup, then connects to the returned IP.
+- **NAT (Network Address Translation)**: home/office networks use **private** IPs behind one public
+  IP; the router rewrites source IP/port on the way out and tracks the mapping so replies return to
+  the right internal host. This is a big reason **source ports** matter (they disambiguate many
+  internal clients sharing one public IP) — and why inbound connections to machines behind NAT need
+  port forwarding or a tunnel (recall the Piston setup!).
+
+<KnowledgeCheck
+  id="cs-dns"
+  type="mcq"
+  prompt="What does DNS do when you connect to `example.com:443`?"
+  options={[
+    "Encrypts the connection",
+    "Resolves the human-readable name to an IP address, which is then used to open the transport connection",
+    "Chooses TCP vs UDP",
+    "Assigns a port"
+  ]}
+  answer={1}
+  explanation="DNS maps names to IP addresses via a distributed, cached hierarchy; the resolved IP (plus the port) is what you actually connect to."
+/>
+
 ## Recap
 
 - Client-server: servers listen/accept; clients initiate. Roles, not machine types.

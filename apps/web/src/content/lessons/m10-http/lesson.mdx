@@ -96,6 +96,58 @@ vulnerabilities — a real security concern.
   explanation="Statelessness means each request stands alone, which simplifies scaling; sessions are layered on top with cookies/tokens."
 />
 
+## The evolution: HTTP/1.1 → 2 → 3
+
+Each HTTP version attacked a performance bottleneck:
+
+- **HTTP/1.0**: one request per TCP connection (open, request, response, close) — a new handshake
+  every time.
+- **HTTP/1.1**: **keep-alive** (reuse the connection for many requests) and chunked encoding. But
+  responses come back **in order** on one connection — **head-of-line blocking** at the app layer.
+- **HTTP/2**: **multiplexing** — many concurrent **streams** over one TCP connection, plus header
+  compression (**HPACK**). Fixes app-layer HOL blocking, but a lost TCP segment still stalls all
+  streams (TCP-layer HOL blocking).
+- **HTTP/3**: runs over **QUIC** (on UDP), where streams are independent, so one lost packet only
+  stalls its own stream — and connection setup + TLS are merged into fewer round trips.
+
+**Caching** rides on headers too: `Cache-Control`, `ETag`, and conditional requests
+(`If-None-Match` → `304 Not Modified`) avoid re-sending unchanged bodies.
+
+<KnowledgeCheck
+  id="http-h2"
+  type="mcq"
+  prompt="What key problem does HTTP/2 multiplexing solve over HTTP/1.1?"
+  options={[
+    "It encrypts traffic",
+    "Application-layer head-of-line blocking: many requests/responses share one connection as independent streams instead of being serialized",
+    "It removes the need for TCP",
+    "It makes requests stateless"
+  ]}
+  answer={1}
+  explanation="HTTP/1.1 serializes responses on a connection (HOL blocking); HTTP/2 interleaves many streams over one connection so a slow response doesn't block others (HTTP/3 further removes TCP-level HOL via QUIC)."
+/>
+
+## Methods: safe and idempotent
+
+REST leans on two properties: a **safe** method has no side effects (GET, HEAD), and an **idempotent**
+method gives the same result if repeated (GET, PUT, DELETE — but **not** POST). This matters for
+retries: a client/proxy can safely retry an idempotent request after a network hiccup, but retrying a
+POST might create a duplicate order.
+
+<KnowledgeCheck
+  id="http-idempotent"
+  type="mcq"
+  prompt="Why can a client safely auto-retry a PUT but not a POST after a timeout?"
+  options={[
+    "PUT is faster",
+    "PUT is idempotent (repeating it yields the same state), while POST is not — retrying POST may create a duplicate",
+    "POST is encrypted",
+    "They're the same"
+  ]}
+  answer={1}
+  explanation="Idempotent methods (PUT/DELETE/GET) can repeat without changing the outcome, so retries are safe; POST typically creates new state each time, so a blind retry can duplicate it."
+/>
+
 ## Parsing in practice
 
 A parser reads the request line (split on spaces, validate the version), then reads headers

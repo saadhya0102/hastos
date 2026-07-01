@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m10-networking",
   title: "The Socket API",
   order: 1,
-  estMinutes: 22,
+  estMinutes: 30,
   objectives: [
     "List the socket calls for servers and clients in order",
     "Explain that sockets are file descriptors",

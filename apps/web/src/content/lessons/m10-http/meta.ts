@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m10-networking",
   title: "HTTP Basics and Parsing",
   order: 3,
-  estMinutes: 22,
+  estMinutes: 30,
   objectives: [
     "Describe the structure of an HTTP request and response",
     "Parse a request line and headers",

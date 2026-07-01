@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m10-networking",
   title: "The Client-Server Model",
   order: 0,
-  estMinutes: 16,
+  estMinutes: 24,
   objectives: [
     "Explain the client-server model and roles",
     "Describe IP addresses, ports, and the protocol stack",

@@ -5,7 +5,7 @@ const meta: LessonMeta = LessonMetaSchema.parse({
   moduleId: "m10-networking",
   title: "Server Concurrency Models",
   order: 4,
-  estMinutes: 22,
+  estMinutes: 30,
   objectives: [
     "Compare process-per-connection, thread-per-connection, and event-driven servers",
     "Explain epoll/event loops and the C10k problem",
