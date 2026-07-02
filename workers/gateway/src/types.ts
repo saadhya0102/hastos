@@ -63,7 +63,7 @@ export interface SubmitResult {
   testsTotal: number;
   tests: TestResultSummary[];
   compile: { status: "ok" | "error"; stderr: string };
-  meta?: { provider: string; durationMs?: number };
+  meta?: { provider: string; durationMs?: number; runs?: number };
 }
 
 export interface RunResult {

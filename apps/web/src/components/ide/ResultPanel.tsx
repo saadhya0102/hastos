@@ -34,14 +34,20 @@ export function ResultPanel({
     );
   }
   const accepted = result.verdict === "accepted";
+  const runs = result.meta?.runs;
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <Badge tone={accepted ? "ok" : "bad"}>{VERDICT_LABEL[result.verdict]}</Badge>
           <span className="text-sm text-muted">
             {result.testsPassed}/{result.testsTotal} tests passed
           </span>
+          {runs && runs > 1 && (
+            <Badge tone={accepted ? "ok" : "warn"}>
+              {accepted ? `stress: ${runs}/${runs} runs clean` : `failed on run ${runs}`}
+            </Badge>
+          )}
         </div>
         {!accepted && onExplain && (
           <button

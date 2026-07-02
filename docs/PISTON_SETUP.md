@@ -55,5 +55,11 @@ checklist to turn it on later. Full detail: `infra/piston/README.md`.
   race/leak detection). Correctness is still graded via test stdout.
 - pthreads generally link on modern glibc (2.34+), so most concurrency problems
   run; race *detection* would need Judge0 or a VPS with custom flags.
+- **Concurrency problems are re-run automatically.** On a non-TSan backend
+  (Piston), the grader runs each `pthread` harness **10 times** and fails the
+  submission if *any* run trips an invariant — a data race that surfaces in even
+  one interleaving is caught. It's probabilistic (not a proof like TSan), but
+  catches the common cases. On Judge0 the TSan build runs once instead. See
+  `workers/gateway/src/routes/execute.ts` (`CONCURRENCY_RUNS`).
 - Optional later: add Judge0 as a fallback grader (`wrangler secret put JUDGE0_URL`)
   for sanitizer coverage. `EXEC_BACKEND=auto` already prefers Piston.

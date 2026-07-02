@@ -22,6 +22,9 @@ const LANG_ID: Record<string, number> = {
   python: 71,
 };
 
+/** How many times to re-run a concurrency harness on a non-TSan backend. */
+const CONCURRENCY_RUNS = 10;
+
 interface ExecuteBody {
   mode: "run" | "submit";
   problemId?: string;
@@ -87,20 +90,58 @@ export async function executeRoute(c: Context<{ Bindings: Env }>): Promise<Respo
         body.source ??
         "";
       const h = assembleHarness(problem, learnerSource);
+
+      // Concurrency harnesses (pthread) can pass by luck on a single run: a data
+      // race only shows up in some interleavings. On backends without a race
+      // detector (Piston) we re-run the harness several times and fail if ANY run
+      // trips an invariant. On Judge0 the TSan build catches races in one run, so
+      // we don't waste quota repeating.
+      const isConcurrency =
+        h.compilerOptions.includes("-pthread") || h.compilerOptions.includes("fsanitize=thread");
+      const runs = isConcurrency && backend !== "judge0" ? CONCURRENCY_RUNS : 1;
+
       const started = Date.now();
-      const r = await execRun(env, {
-        slug: "c",
-        languageId: h.languageId,
-        source: h.sourceCode,
-        // Sanitizer/threading flags apply on Judge0; Piston ignores compilerOptions.
-        compilerOptions: h.compilerOptions,
-        cpuTimeLimit: h.cpuTimeLimit,
-        wallTimeLimit: h.wallTimeLimit,
-        memoryLimitKb: h.memoryLimitKb,
-      });
-      const result: SubmitResult = gradeHarness(problem, r);
-      result.meta = { provider, durationMs: Date.now() - started };
-      return c.json(result);
+      let result: SubmitResult | null = null;
+      let passingRuns = 0;
+      for (let i = 0; i < runs; i++) {
+        const r = await execRun(env, {
+          slug: "c",
+          languageId: h.languageId,
+          source: h.sourceCode,
+          // Sanitizer/threading flags apply on Judge0; Piston ignores compilerOptions.
+          compilerOptions: h.compilerOptions,
+          cpuTimeLimit: h.cpuTimeLimit,
+          wallTimeLimit: h.wallTimeLimit,
+          memoryLimitKb: h.memoryLimitKb,
+        });
+        const graded = gradeHarness(problem, r);
+        if (graded.verdict !== "accepted") {
+          // Any failing run fails the submission — report it, noting which run.
+          graded.meta = {
+            provider,
+            durationMs: Date.now() - started,
+            runs: runs > 1 ? i + 1 : undefined,
+          };
+          return c.json(graded);
+        }
+        result = graded;
+        passingRuns++;
+      }
+
+      // All runs passed.
+      const final: SubmitResult = result ?? {
+        verdict: "accepted",
+        testsPassed: 0,
+        testsTotal: 0,
+        tests: [],
+        compile: { status: "ok", stderr: "" },
+      };
+      final.meta = {
+        provider,
+        durationMs: Date.now() - started,
+        runs: runs > 1 ? passingRuns : undefined,
+      };
+      return c.json(final);
     }
 
     // ---- RUN (ungraded) ----

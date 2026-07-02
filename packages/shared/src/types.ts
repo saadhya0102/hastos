@@ -31,7 +31,7 @@ export interface SubmitResult {
   testsTotal: number;
   tests: TestResultSummary[];
   compile: { status: "ok" | "error"; stderr: string };
-  meta?: { provider: string; queuedMs?: number; durationMs?: number };
+  meta?: { provider: string; queuedMs?: number; durationMs?: number; runs?: number };
 }
 
 /** Response of POST /execute when mode === "run". */
