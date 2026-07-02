@@ -1,0 +1,22 @@
+Reverse a C string **in place** — a classic two-pointer warm-up that reinforces the null-terminated
+string model.
+
+## Your task
+
+In `strrev.c`, implement:
+
+```c
+void str_reverse(char *s);
+```
+
+Reverse the characters of the null-terminated string `s` **in place** (don't allocate a second
+buffer). Empty and single-character strings must be handled.
+
+## Hints (no spoilers)
+
+- Find the length (walk to the `'\0'`), then swap `s[i]` and `s[j]` with `i` starting at `0` and
+  `j` at `len - 1`, moving inward while `i < j`.
+- Don't move or overwrite the terminator.
+- Empty (`""`) and single-char (`"a"`) strings are already their own reverse.
+
+Graded with AddressSanitizer, so any out-of-bounds swap is flagged. Use **Run** then **Submit**.

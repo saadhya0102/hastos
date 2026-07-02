@@ -1,0 +1,24 @@
+Count the **trailing zero bits** of a 32-bit value — the mirror of counting leading zeros, and a
+primitive behind allocators, bitsets, and the "isolate lowest set bit" trick.
+
+## Your task
+
+In `ctz.c`, implement:
+
+```c
+int ctz32(uint32_t x);
+```
+
+Return the number of zero bits below the lowest set bit. **Define `ctz32(0) == 32`.**
+
+```
+ctz32(0b...1000) = 3     ctz32(1) = 0     ctz32(0x80000000) = 31     ctz32(0) = 32
+```
+
+## Hints (no spoilers)
+
+- Special-case `x == 0` first (return 32) — hardware `TZCNT`/`__builtin_ctz` are undefined on 0.
+- Simple loop: shift right while the low bit is 0, counting steps.
+- Slick: `x & (-x)` isolates the lowest set bit; the position of that bit is the answer.
+
+Use **Run** then **Submit**.

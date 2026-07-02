@@ -1,0 +1,38 @@
+Parse a dotted-quad **IPv4 address** into a packed 32-bit integer — the kind of small, careful
+parser that shows up all over networking code.
+
+## Your task
+
+In `ipv4.c`, implement:
+
+```c
+int parse_ipv4(const char *s, uint32_t *out);
+```
+
+Parse exactly four octets `A.B.C.D`, each in `[0, 255]`. On success, set
+
+```
+*out = (A << 24) | (B << 16) | (C << 8) | D
+```
+
+(the first octet in the **high** byte — network order) and return `1`. If the string isn't a
+valid IPv4 address (an octet > 255, or not exactly four octets), return `0`. You may assume the
+input contains only digits and dots.
+
+## Examples
+
+```
+"1.2.3.4"          -> 1, *out = 0x01020304
+"192.168.1.10"     -> 1, *out = 0xC0A8010A
+"255.255.255.255"  -> 1, *out = 0xFFFFFFFF
+"256.0.0.1"        -> 0   (octet out of range)
+"1.2.3"            -> 0   (too few octets)
+```
+
+## Hints (no spoilers)
+
+- The quickest route: `sscanf(s, "%u.%u.%u.%u", &a, &b, &c, &d)` and check it returned `4`.
+- Then validate each octet is `<= 255` before packing.
+- Watch the shift: `A << 24` needs `A` to be at least 32 bits wide (use `uint32_t`).
+
+Use **Run** then **Submit**.

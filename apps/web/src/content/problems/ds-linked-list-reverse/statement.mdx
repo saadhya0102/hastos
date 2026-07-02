@@ -1,0 +1,38 @@
+Reverse a singly linked list **in place** — the quintessential pointer-manipulation interview
+question. The trick is rewiring `next` pointers without losing the rest of the list.
+
+## Your task
+
+In `llrev.c`, implement:
+
+```c
+typedef struct node { int val; struct node *next; } node_t;
+node_t *reverse_list(node_t *head);
+```
+
+Return the new head. Reverse by **rewiring pointers** — do **not** allocate new nodes (that would
+leak the originals; AddressSanitizer will catch it). Handle the empty list (`NULL`) and a single
+node.
+
+## The pattern
+
+Walk the list once, keeping three pointers:
+
+```
+prev = NULL
+while (cur) {
+    next = cur->next   // save the rest
+    cur->next = prev   // flip this link
+    prev = cur         // advance
+    cur = next
+}
+return prev            // new head
+```
+
+## Hints (no spoilers)
+
+- The **order matters**: save `cur->next` *before* you overwrite it, or you lose the tail.
+- `reverse_list(NULL)` returns `NULL`; a single node returns itself.
+
+The grader builds lists, reverses them, verifies the order, and frees the result — so a leak
+(allocating new nodes) or a dropped node will fail. Use **Run** then **Submit**.

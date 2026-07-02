@@ -1,0 +1,33 @@
+Simulate **Shortest-Job-First (SJF)** scheduling and report the total turnaround time. SJF is
+provably optimal for average turnaround when all jobs arrive together.
+
+## Your task
+
+In `sjf.c`, implement:
+
+```c
+long sjf_total_turnaround(const int *burst, int n);
+```
+
+All `n` jobs arrive at `t = 0` with the given CPU `burst` times. Run them **shortest first**
+(non-preemptive), and return the **sum of turnaround times**. Since every job arrives at 0, a
+job's turnaround equals its completion time.
+
+## Worked example
+
+```
+bursts = [100, 10, 10]
+SJF order: 10, 10, 100
+completions: 10, 20, 120
+total turnaround = 10 + 20 + 120 = 150
+```
+
+## Hints (no spoilers)
+
+- The input is `const`, so copy it into a local array before sorting (a fixed-size local like
+  `int tmp[n];` avoids `malloc` and any leak).
+- Sort ascending, then keep a running prefix sum (`running += tmp[i]`) and add it to the total
+  each step.
+- `n == 0` returns `0`.
+
+Use **Run** then **Submit**.

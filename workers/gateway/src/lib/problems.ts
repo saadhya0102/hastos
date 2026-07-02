@@ -1781,7 +1781,259 @@ int main(void) {
 #include "impl.c"
 `;
 
+/* ========================== new problem set (batch 2) ========================== */
+
+const STRREV_HEADER = `#ifndef STRREV_H
+#define STRREV_H
+void str_reverse(char *s);
+#endif
+`;
+
+const STRREV_DRIVER = `#include "strrev.h"
+#include <stdio.h>
+#include <string.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  { char s[] = "hello"; str_reverse(s); CHECK("basic", strcmp(s, "olleh") == 0, "reverse hello -> olleh"); }
+  { char s[] = ""; str_reverse(s); CHECK("empty", strcmp(s, "") == 0, "empty stays empty"); }
+  { char s[] = "a"; str_reverse(s); CHECK("single", strcmp(s, "a") == 0, "single char unchanged"); }
+  { char s[] = "ab"; str_reverse(s); CHECK("even", strcmp(s, "ba") == 0, "ab -> ba"); }
+  { char s[] = "abcde"; str_reverse(s); CHECK("odd", strcmp(s, "edcba") == 0, "odd length reversed"); }
+  { char s[] = "racecar"; str_reverse(s); CHECK("palindrome", strcmp(s, "racecar") == 0, "palindrome unchanged"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const CTZ_HEADER = `#ifndef CTZ_H
+#define CTZ_H
+#include <stdint.h>
+int ctz32(uint32_t x);
+#endif
+`;
+
+const CTZ_DRIVER = `#include "ctz.h"
+#include <stdio.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  CHECK("one", ctz32(1u) == 0, "ctz32(1) is 0 (lowest bit set)");
+  CHECK("two", ctz32(2u) == 1, "ctz32(2) is 1");
+  CHECK("eight", ctz32(8u) == 3, "ctz32(8) is 3");
+  CHECK("zero", ctz32(0u) == 32, "ctz32(0) is defined as 32");
+  CHECK("high", ctz32(0x80000000u) == 31, "only top bit set -> 31 trailing zeros");
+  CHECK("mixed", ctz32(0xF0u) == 4, "0xF0 has 4 trailing zeros");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const LLREV_HEADER = `#ifndef LLREV_H
+#define LLREV_H
+typedef struct node { int val; struct node *next; } node_t;
+node_t *reverse_list(node_t *head);
+#endif
+`;
+
+const LLREV_DRIVER = `#include "llrev.h"
+#include <stdio.h>
+#include <stdlib.h>
+
+${CHECK_MACRO}
+
+static node_t *build(const int *a, int n) {
+  node_t *h = NULL, *t = NULL;
+  for (int i = 0; i < n; i++) {
+    node_t *x = (node_t *)malloc(sizeof(node_t));
+    x->val = a[i]; x->next = NULL;
+    if (!h) { h = t = x; } else { t->next = x; t = x; }
+  }
+  return h;
+}
+static int check(node_t *h, const int *a, int n) {
+  for (int i = 0; i < n; i++) { if (!h || h->val != a[i]) return 0; h = h->next; }
+  return h == NULL;
+}
+static void freelist(node_t *h) { while (h) { node_t *n = h->next; free(h); h = n; } }
+
+int main(void) {
+  { int in[] = {1,2,3,4,5}; int ex[] = {5,4,3,2,1}; node_t *h = reverse_list(build(in, 5));
+    CHECK("basic", check(h, ex, 5), "1..5 reversed to 5..1"); freelist(h); }
+  { node_t *h = reverse_list(NULL); CHECK("empty", h == NULL, "reversing empty gives empty"); }
+  { int in[] = {42}; node_t *h = reverse_list(build(in, 1));
+    CHECK("single", check(h, in, 1), "single node unchanged"); freelist(h); }
+  { int in[] = {1,2}; int ex[] = {2,1}; node_t *h = reverse_list(build(in, 2));
+    CHECK("two", check(h, ex, 2), "two nodes swapped"); freelist(h); }
+  { int in[10], ex[10]; for (int i = 0; i < 10; i++) { in[i] = i; ex[i] = 9 - i; }
+    node_t *h = reverse_list(build(in, 10)); CHECK("ten", check(h, ex, 10), "ten nodes reversed"); freelist(h); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const SJF_HEADER = `#ifndef SJF_H
+#define SJF_H
+/* Sum of turnaround times under Shortest-Job-First (all jobs arrive at t=0). */
+long sjf_total_turnaround(const int *burst, int n);
+#endif
+`;
+
+const SJF_DRIVER = `#include "sjf.h"
+#include <stdio.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  { int b[] = {100, 10, 10}; CHECK("classic", sjf_total_turnaround(b, 3) == 150, "order 10,10,100 -> 10+20+120 = 150"); }
+  { int b[] = {5}; CHECK("single", sjf_total_turnaround(b, 1) == 5, "one job -> 5"); }
+  { CHECK("empty", sjf_total_turnaround(0, 0) == 0, "no jobs -> 0"); }
+  { int b[] = {1, 2, 3, 4}; CHECK("sorted", sjf_total_turnaround(b, 4) == 20, "completions 1,3,6,10 -> 20"); }
+  { int b[] = {4, 3, 2, 1}; CHECK("reverse", sjf_total_turnaround(b, 4) == 20, "SJF reorders; same 20"); }
+  { int b[] = {2, 2, 2}; CHECK("equal", sjf_total_turnaround(b, 3) == 12, "2+4+6 = 12"); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const IPV4_HEADER = `#ifndef IPV4_H
+#define IPV4_H
+#include <stdint.h>
+/* Parse a dotted-quad into *out (first octet in the high byte). Return 1 on success, 0 if invalid. */
+int parse_ipv4(const char *s, uint32_t *out);
+#endif
+`;
+
+const IPV4_DRIVER = `#include "ipv4.h"
+#include <stdio.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  uint32_t v = 0;
+  CHECK("basic", parse_ipv4("1.2.3.4", &v) == 1 && v == 0x01020304u, "1.2.3.4 -> 0x01020304");
+  CHECK("zeros", parse_ipv4("0.0.0.0", &v) == 1 && v == 0x00000000u, "0.0.0.0 -> 0");
+  CHECK("max", parse_ipv4("255.255.255.255", &v) == 1 && v == 0xFFFFFFFFu, "broadcast -> all ones");
+  CHECK("mixed", parse_ipv4("192.168.1.10", &v) == 1 && v == 0xC0A8010Au, "192.168.1.10");
+  CHECK("overflow", parse_ipv4("256.0.0.1", &v) == 0, "octet > 255 must be rejected");
+  CHECK("too_few", parse_ipv4("1.2.3", &v) == 0, "need exactly four octets");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
+  "m0-p-strrev": {
+    id: "m0-p-strrev",
+    languageId: 50,
+    header: { name: "strrev.h", content: STRREV_HEADER },
+    driver: STRREV_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "strrev.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      basic: "sample",
+      empty: "hidden",
+      single: "hidden",
+      even: "hidden",
+      odd: "hidden",
+      palindrome: "hidden",
+    },
+  },
+
+  "m1-p-ctz": {
+    id: "m1-p-ctz",
+    languageId: 50,
+    header: { name: "ctz.h", content: CTZ_HEADER },
+    driver: CTZ_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "ctz.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      one: "sample",
+      two: "hidden",
+      eight: "hidden",
+      zero: "hidden",
+      high: "hidden",
+      mixed: "hidden",
+    },
+  },
+
+  "ds-linked-list-reverse": {
+    id: "ds-linked-list-reverse",
+    languageId: 50,
+    header: { name: "llrev.h", content: LLREV_HEADER },
+    driver: LLREV_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "llrev.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      basic: "sample",
+      empty: "hidden",
+      single: "hidden",
+      two: "hidden",
+      ten: "hidden",
+    },
+  },
+
+  "m8-p-sjf": {
+    id: "m8-p-sjf",
+    languageId: 50,
+    header: { name: "sjf.h", content: SJF_HEADER },
+    driver: SJF_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "sjf.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      classic: "sample",
+      single: "hidden",
+      empty: "hidden",
+      sorted: "hidden",
+      reverse: "hidden",
+      equal: "hidden",
+    },
+  },
+
+  "m10-p-ipv4": {
+    id: "m10-p-ipv4",
+    languageId: 50,
+    header: { name: "ipv4.h", content: IPV4_HEADER },
+    driver: IPV4_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "ipv4.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      basic: "sample",
+      zeros: "hidden",
+      max: "hidden",
+      mixed: "hidden",
+      overflow: "hidden",
+      too_few: "hidden",
+    },
+  },
+
   "m0-p-memmove": {
     id: "m0-p-memmove",
     languageId: 50,
