@@ -104,3 +104,86 @@ export function EmptyState({ title, hint }: { title: string; hint?: string }) {
     </div>
   );
 }
+
+/** A compact stat tile: big value + label, optional sub-line and accent. */
+export function Stat({
+  label,
+  value,
+  sub,
+  tone = "default",
+  className,
+}: {
+  label: string;
+  value: ReactNode;
+  sub?: ReactNode;
+  tone?: "default" | "accent" | "ok" | "warn" | "info";
+  className?: string;
+}) {
+  return (
+    <div
+      className={clsx(
+        "rounded-xl border border-border bg-surface p-5 transition-colors",
+        tone === "accent" && "border-accent/30",
+        className,
+      )}
+    >
+      <p className="text-sm text-muted">{label}</p>
+      <p
+        className={clsx(
+          "mt-1 text-3xl font-bold tabular-nums",
+          tone === "accent" && "text-accent",
+          tone === "ok" && "text-ok",
+          tone === "warn" && "text-warn",
+          tone === "info" && "text-info",
+        )}
+      >
+        {value}
+      </p>
+      {sub && <p className="mt-1 text-xs text-muted">{sub}</p>}
+    </div>
+  );
+}
+
+/** Horizontal progress bar (value 0..1). */
+export function LinearBar({
+  value,
+  className,
+  tone = "accent",
+}: {
+  value: number;
+  className?: string;
+  tone?: "accent" | "ok" | "info";
+}) {
+  const pct = Math.max(0, Math.min(1, value)) * 100;
+  return (
+    <div className={clsx("h-2 w-full overflow-hidden rounded-full bg-surface2", className)}>
+      <div
+        className={clsx(
+          "h-full rounded-full transition-[width] duration-500",
+          tone === "accent" && "bg-accent",
+          tone === "ok" && "bg-ok",
+          tone === "info" && "bg-info",
+        )}
+        style={{ width: `${pct}%` }}
+      />
+    </div>
+  );
+}
+
+/** Section heading with an optional trailing action (e.g., a "View all" link). */
+export function SectionHeading({
+  title,
+  action,
+  className,
+}: {
+  title: ReactNode;
+  action?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={clsx("mb-3 flex items-center justify-between", className)}>
+      <h2 className="text-lg font-semibold">{title}</h2>
+      {action}
+    </div>
+  );
+}
