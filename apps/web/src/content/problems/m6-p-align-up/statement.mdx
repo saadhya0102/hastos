@@ -1,0 +1,34 @@
+Rounding a size **up to an alignment boundary** is the single most-used primitive in allocators,
+page math, and struct layout. This is the bit trick behind all of it.
+
+## Your task
+
+In `alignup.c`, implement:
+
+```c
+size_t align_up(size_t n, size_t align);
+```
+
+Return `n` rounded **up** to the nearest multiple of `align`, where `align` is a **power of two**
+(≥ 1). Values that are already aligned are unchanged. Aim for **O(1)** with no loop.
+
+## The trick
+
+For a power-of-two `align`, `align - 1` is a mask of the low bits. Adding it then masking them off
+rounds up:
+
+```
+align_up(n, a) = (n + a - 1) & ~(a - 1)
+```
+
+```
+align_up(9, 8):  (9 + 7) & ~7 = 16 & 0xFFF8 = 16
+align_up(8, 8):  (8 + 7) & ~7 = 15 & 0xFFF8 = 8
+```
+
+## Hints (no spoilers)
+
+- `~(align - 1)` clears the low bits — that's why `align` must be a power of two.
+- `align == 1` means `~0`, so nothing is rounded (every number is a multiple of 1).
+
+Use **Run** then **Submit**.

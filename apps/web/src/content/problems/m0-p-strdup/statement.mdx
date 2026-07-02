@@ -1,0 +1,23 @@
+Implement `my_strdup` — allocate a fresh, independent copy of a string. It's the simplest problem
+that combines `strlen`, `malloc`, and copying, and it's a rite of passage for manual memory
+management.
+
+## Your task
+
+In `mystrdup.c`, implement:
+
+```c
+char *my_strdup(const char *s);
+```
+
+Allocate enough memory to hold `s` **including its `'\0'` terminator**, copy the bytes in, and
+return the new pointer. The caller is responsible for `free`-ing it.
+
+## Hints (no spoilers)
+
+- Size is `strlen(s) + 1` — the `+ 1` is for the terminator, which is data, not metadata.
+- `malloc` that many bytes, then copy (`memcpy` of `len + 1`, or `strcpy`).
+- The copy must be **independent**: writing to it must not touch the original.
+
+Graded with AddressSanitizer — the driver frees each duplicate, so a missing allocation, an
+off-by-one (forgetting the terminator), or a leak will be caught. Use **Run** then **Submit**.

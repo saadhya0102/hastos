@@ -1929,7 +1929,237 @@ int main(void) {
 #include "impl.c"
 `;
 
+/* ========================== new problem set (batch 3) ========================== */
+
+const ALIGNUP_HEADER = `#ifndef ALIGNUP_H
+#define ALIGNUP_H
+#include <stddef.h>
+size_t align_up(size_t n, size_t align);
+#endif
+`;
+
+const ALIGNUP_DRIVER = `#include "alignup.h"
+#include <stdio.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  CHECK("round_up", align_up(9, 8) == 16, "9 rounds up to 16 for 8-byte alignment");
+  CHECK("zero", align_up(0, 8) == 0, "0 is already aligned");
+  CHECK("exact", align_up(8, 8) == 8, "an exact multiple is unchanged");
+  CHECK("one", align_up(1, 8) == 8, "1 rounds up to 8");
+  CHECK("page", align_up(1000, 4096) == 4096, "1000 rounds up to a 4096 page");
+  CHECK("align_one", align_up(100, 1) == 100, "alignment of 1 changes nothing");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const STRDUP_HEADER = `#ifndef MYSTRDUP_H
+#define MYSTRDUP_H
+char *my_strdup(const char *s);
+#endif
+`;
+
+const STRDUP_DRIVER = `#include "mystrdup.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  { char *d = my_strdup("hello"); CHECK("basic", d && strcmp(d, "hello") == 0, "duplicate of hello"); free(d); }
+  { const char *s = "world"; char *d = my_strdup(s); CHECK("distinct", d && d != s, "must be a new allocation"); free(d); }
+  { char *d = my_strdup(""); CHECK("empty", d && d[0] == '\\0', "empty string duplicates to \\"\\""); free(d); }
+  { char src[] = "abc"; char *d = my_strdup(src); if (d) d[0] = 'X';
+    CHECK("independent", strcmp(src, "abc") == 0, "modifying the copy must not touch the original"); free(d); }
+  { char big[1001]; for (int i = 0; i < 1000; i++) big[i] = (char)('a' + (i % 26)); big[1000] = '\\0';
+    char *d = my_strdup(big); CHECK("long", d && strcmp(d, big) == 0, "duplicate a 1000-char string"); free(d); }
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const IMAX_HEADER = `#ifndef IMAX_H
+#define IMAX_H
+int imax(int a, int b);
+#endif
+`;
+
+const IMAX_DRIVER = `#include "imax.h"
+#include <stdio.h>
+#include <limits.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  CHECK("basic", imax(3, 5) == 5, "max(3,5) = 5");
+  CHECK("swapped", imax(5, 3) == 5, "max(5,3) = 5");
+  CHECK("negatives", imax(-1, -2) == -1, "max(-1,-2) = -1");
+  CHECK("equal", imax(7, 7) == 7, "max(7,7) = 7");
+  CHECK("extremes", imax(INT_MIN, INT_MAX) == INT_MAX, "max(INT_MIN,INT_MAX) = INT_MAX");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const LOWERB_HEADER = `#ifndef LOWERB_H
+#define LOWERB_H
+/* First index i in the ascending array with a[i] >= key, or n if none. */
+int lower_bound(const int *a, int n, int key);
+#endif
+`;
+
+const LOWERB_DRIVER = `#include "lowerb.h"
+#include <stdio.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  int a[] = {1, 3, 5, 7};
+  CHECK("found", lower_bound(a, 4, 5) == 2, "first index >= 5 is 2");
+  CHECK("between", lower_bound(a, 4, 4) == 2, "first index >= 4 is 2 (value 5)");
+  CHECK("before", lower_bound(a, 4, 0) == 0, "key below all -> 0");
+  CHECK("after", lower_bound(a, 4, 100) == 4, "key above all -> n");
+  { int d[] = {2, 2, 2, 2}; CHECK("dups", lower_bound(d, 4, 2) == 0, "leftmost of duplicates"); }
+  CHECK("empty", lower_bound(a, 0, 5) == 0, "empty array -> 0");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const HAMMING_HEADER = `#ifndef HAMMING_H
+#define HAMMING_H
+#include <stdint.h>
+int hamming(uint32_t a, uint32_t b);
+#endif
+`;
+
+const HAMMING_DRIVER = `#include "hamming.h"
+#include <stdio.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  CHECK("same", hamming(0u, 0u) == 0, "identical values differ in 0 bits");
+  CHECK("one", hamming(0u, 1u) == 1, "0 and 1 differ in 1 bit");
+  CHECK("byte", hamming(0xFFu, 0u) == 8, "0xFF vs 0 differ in 8 bits");
+  CHECK("all", hamming(0xFFFFFFFFu, 0u) == 32, "all ones vs 0 differ in 32 bits");
+  CHECK("alt", hamming(0xAu, 0x5u) == 4, "1010 vs 0101 differ in 4 bits");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
+  "m6-p-align-up": {
+    id: "m6-p-align-up",
+    languageId: 50,
+    header: { name: "alignup.h", content: ALIGNUP_HEADER },
+    driver: ALIGNUP_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "alignup.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      round_up: "sample",
+      zero: "hidden",
+      exact: "hidden",
+      one: "hidden",
+      page: "hidden",
+      align_one: "hidden",
+    },
+  },
+
+  "m0-p-strdup": {
+    id: "m0-p-strdup",
+    languageId: 50,
+    header: { name: "mystrdup.h", content: STRDUP_HEADER },
+    driver: STRDUP_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "mystrdup.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      basic: "sample",
+      distinct: "hidden",
+      empty: "hidden",
+      independent: "hidden",
+      long: "hidden",
+    },
+  },
+
+  "m2-p-max": {
+    id: "m2-p-max",
+    languageId: 50,
+    header: { name: "imax.h", content: IMAX_HEADER },
+    driver: IMAX_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "imax.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      basic: "sample",
+      swapped: "hidden",
+      negatives: "hidden",
+      equal: "hidden",
+      extremes: "hidden",
+    },
+  },
+
+  "ds-binary-search": {
+    id: "ds-binary-search",
+    languageId: 50,
+    header: { name: "lowerb.h", content: LOWERB_HEADER },
+    driver: LOWERB_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "lowerb.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      found: "sample",
+      between: "hidden",
+      before: "hidden",
+      after: "hidden",
+      dups: "hidden",
+      empty: "hidden",
+    },
+  },
+
+  "m1-p-hamming": {
+    id: "m1-p-hamming",
+    languageId: 50,
+    header: { name: "hamming.h", content: HAMMING_HEADER },
+    driver: HAMMING_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "hamming.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      same: "sample",
+      one: "hidden",
+      byte: "hidden",
+      all: "hidden",
+      alt: "hidden",
+    },
+  },
+
   "m0-p-strrev": {
     id: "m0-p-strrev",
     languageId: 50,

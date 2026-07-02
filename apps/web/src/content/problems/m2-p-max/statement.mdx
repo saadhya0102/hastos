@@ -1,0 +1,31 @@
+Return the larger of two integers — ideally **without a branch**. A great excuse to think about how
+`cmov` and bit-select tricks replace jumps the CPU might mispredict.
+
+## Your task
+
+In `imax.c`, implement:
+
+```c
+int imax(int a, int b);
+```
+
+Return the larger of `a` and `b`. It must be correct for negatives and for the full `int` range
+(`INT_MIN` … `INT_MAX`).
+
+## Branchless approaches
+
+A correct branchless form selects bits rather than subtracting (subtraction can overflow):
+
+```c
+return a ^ ((a ^ b) & -(a < b));   // if a < b, pick b; else pick a
+```
+
+`-(a < b)` is `0` or `0xFFFFFFFF`, which either keeps `a` or XOR-swaps it toward `b`.
+
+## Hints (no spoilers)
+
+- A plain `a > b ? a : b` is also accepted — the compiler often turns it into a branchless `cmov`.
+- Avoid `a + ((b - a) & ...)` style tricks: `b - a` can overflow for extreme inputs (that's what
+  the `extremes` test checks).
+
+Use **Run** then **Submit**.

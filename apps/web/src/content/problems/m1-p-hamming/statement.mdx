@@ -1,0 +1,32 @@
+Compute the **Hamming distance** between two 32-bit integers — the number of bit positions where
+they differ. It's a one-liner once you see the XOR-then-popcount insight, and it underlies error
+detection, hashing, and similarity metrics.
+
+## Your task
+
+In `hamming.c`, implement:
+
+```c
+int hamming(uint32_t a, uint32_t b);
+```
+
+Return how many of the 32 bit positions differ between `a` and `b`. Equal inputs give `0`.
+
+## The insight
+
+`a ^ b` has a `1` exactly where `a` and `b` differ, so the distance is just the **popcount** of the
+XOR:
+
+```
+a = 1010
+b = 0101
+a ^ b = 1111  -> popcount = 4
+```
+
+## Hints (no spoilers)
+
+- `hamming(a, b) = popcount(a ^ b)`.
+- Count set bits with a loop, a lookup table, or Kernighan's trick: `for (; x; c++) x &= x - 1;`
+  (clears the lowest set bit each iteration).
+
+Use **Run** then **Submit**.
