@@ -14,6 +14,8 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = "llama-3.3-70b-versatile"
 ALLOWED_ORIGIN = "http://localhost:5173,https://hastos.web.app,https://hastos.firebaseapp.com"
 EXEC_BACKEND = "auto"           # "piston" | "judge0" | "auto" (auto prefers Piston if PISTON_URL is set)
+ADMIN_EMAILS = "saadhya0102@gmail.com"          # allowlist for admin-only endpoints (/admin/*)
+GRADER_IMAGE = "ghcr.io/saadhya0102/hastos-grader:latest"  # image the Admin panel tells hosts to run
 
 # Rate-limit + cache KV (per-user sliding-window counters; see src/lib/ratelimit.ts).
 [[kv_namespaces]]
@@ -23,7 +25,8 @@ id = "5921c7a6b09e4fe988b706899d52e733"
 # Secrets (do NOT put values here):
 #   wrangler secret put OPENAI_API_KEY
 #   wrangler secret put GROQ_API_KEY
-#   wrangler secret put PISTON_URL             (primary grader; SELF-HOSTED — your tunnel/VM URL. public emkc API is no longer free)
+#   wrangler secret put GRADER_TOKEN           (shared secret self-hosted graders use to register via the Admin panel)
+#   wrangler secret put PISTON_URL             (optional static fallback grader; a registered grader overrides it)
 #   wrangler secret put JUDGE0_URL             (optional fallback grader)
 #   wrangler secret put JUDGE0_AUTH_TOKEN
 #   wrangler secret put JUDGE0_RAPIDAPI_HOST   (optional, if using RapidAPI)

@@ -3,6 +3,12 @@ import { cors } from "hono/cors";
 import type { Env } from "./types";
 import { executeRoute } from "./routes/execute";
 import { graderStatusRoute } from "./routes/graderStatus";
+import {
+  graderRegisterRoute,
+  graderHeartbeatRoute,
+  graderDeregisterRoute,
+  graderAdminRoute,
+} from "./routes/grader";
 import { slavaRoute } from "./routes/slava";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -23,6 +29,10 @@ app.get("/health", (c) =>
 );
 
 app.get("/grader-status", graderStatusRoute);
+app.post("/grader/register", graderRegisterRoute);
+app.post("/grader/heartbeat", graderHeartbeatRoute);
+app.post("/grader/deregister", graderDeregisterRoute);
+app.get("/admin/grader", graderAdminRoute);
 app.post("/execute", executeRoute);
 app.post("/slava", slavaRoute);
 

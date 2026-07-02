@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { Env } from "../types";
 import { graderStatus } from "../lib/exec";
+import { getActiveGraderUrl } from "../lib/registry";
 
 /**
  * Public health probe for the code-execution grader (Piston/Judge0). No auth
@@ -8,8 +9,11 @@ import { graderStatus } from "../lib/exec";
  * to decide whether to fall back to in-browser WASM execution.
  */
 export async function graderStatusRoute(c: Context<{ Bindings: Env }>): Promise<Response> {
-  const status = await graderStatus(c.env);
-  // Cache briefly at the edge to avoid hammering the backend on every page.
-  c.header("cache-control", "public, max-age=10");
+  // A dynamically-registered grader overrides the static PISTON_URL secret.
+  const dynamicUrl = await getActiveGraderUrl(c.env);
+  const env: Env = dynamicUrl ? { ...c.env, PISTON_URL: dynamicUrl } : c.env;
+  const status = await graderStatus(env);
+  // Short edge cache; low enough that a newly-registered grader shows up quickly.
+  c.header("cache-control", "public, max-age=5");
   return c.json(status);
 }

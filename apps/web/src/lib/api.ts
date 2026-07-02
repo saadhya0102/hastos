@@ -52,6 +52,28 @@ export function runCode(req: Omit<ExecuteRequest, "mode">): Promise<RunResult> {
   return postJson<RunResult>("/execute", { ...req, mode: "run" });
 }
 
+export interface GraderAdminInfo {
+  configured: boolean;
+  image: string;
+  workerUrl: string;
+  ttlSec: number;
+  command: string;
+  grader: {
+    name?: string;
+    urlMasked: string;
+    registeredAt: number;
+    lastSeen: number;
+    ageSec: number;
+  } | null;
+}
+
+/** Admin-only: fetch the grader hosting command + current registration. */
+export async function fetchGraderAdminInfo(): Promise<GraderAdminInfo> {
+  const res = await fetch(`${GATEWAY}/admin/grader`, { headers: await authHeaders() });
+  if (!res.ok) throw new ApiError(`admin request failed (${res.status})`, res.status);
+  return (await res.json()) as GraderAdminInfo;
+}
+
 /** How a run was (or would be) executed, for UI messaging. */
 export type RunVia = "server" | "wasm";
 

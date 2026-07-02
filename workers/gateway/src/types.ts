@@ -10,6 +10,8 @@ export interface Env {
   GROQ_MODEL: string;
   ALLOWED_ORIGIN: string;
   EXEC_BACKEND?: string; // "piston" | "judge0" | "auto" (default: auto -> piston if PISTON_URL set)
+  ADMIN_EMAILS?: string; // comma-separated allowlist for admin-only endpoints
+  GRADER_IMAGE?: string; // docker image the Admin panel tells hosts to run
 
   // secrets
   OPENAI_API_KEY?: string;
@@ -18,7 +20,15 @@ export interface Env {
   JUDGE0_AUTH_TOKEN?: string;
   JUDGE0_RAPIDAPI_HOST?: string;
   PISTON_URL?: string;
+  GRADER_TOKEN?: string; // shared secret a self-hosted grader uses to register
   FIREBASE_PROJECT_ID?: string;
+}
+
+export interface GraderRecord {
+  url: string;
+  name?: string;
+  registeredAt: number;
+  lastSeen: number;
 }
 
 export type ExecBackend = "piston" | "judge0" | "none";

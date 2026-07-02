@@ -12,6 +12,7 @@ import {
 } from "../lib/exec";
 import { assembleHarness, getHarnessProblem } from "../lib/problems";
 import { gradeHarness } from "../lib/grade";
+import { getActiveGraderUrl } from "../lib/registry";
 
 const LANG_ID: Record<string, number> = {
   c: 50,
@@ -54,9 +55,14 @@ function toRunResult(r: Judge0Result): RunResult {
 }
 
 export async function executeRoute(c: Context<{ Bindings: Env }>): Promise<Response> {
-  const env = c.env;
-  const user = await verifyUser(c.req.raw, env);
+  const baseEnv = c.env;
+  const user = await verifyUser(c.req.raw, baseEnv);
   if (!user) return c.json({ error: "unauthorized" }, 401);
+
+  // A dynamically-registered grader (Admin panel / bundled image) overrides the
+  // static PISTON_URL secret, so hosts can come online without a redeploy.
+  const dynamicUrl = await getActiveGraderUrl(baseEnv);
+  const env: Env = dynamicUrl ? { ...baseEnv, PISTON_URL: dynamicUrl } : baseEnv;
 
   let body: ExecuteBody;
   try {
