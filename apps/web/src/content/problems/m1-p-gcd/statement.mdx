@@ -1,0 +1,32 @@
+Implement the **greatest common divisor** with Euclid's algorithm — one of the oldest and most
+elegant algorithms, and a common interview warm-up.
+
+## Your task
+
+In `gcd.c`, implement:
+
+```c
+unsigned gcd(unsigned a, unsigned b);
+```
+
+Return the largest integer dividing both `a` and `b`. Define `gcd(x, 0) = x` and
+`gcd(0, 0) = 0`. Use **Euclid's algorithm** (don't factorize).
+
+## The algorithm
+
+Repeatedly replace `(a, b)` with `(b, a % b)` until `b` is `0`; the answer is then `a`:
+
+```
+gcd(48, 36) -> gcd(36, 12) -> gcd(12, 0) -> 12
+```
+
+## Hints (no spoilers)
+
+- Iterative form:
+  ```c
+  while (b != 0) { unsigned t = a % b; a = b; b = t; }
+  return a;
+  ```
+- The `gcd(x, 0) = x` base case falls out naturally when the loop exits.
+
+Use **Run** to experiment and **Submit** to grade.

@@ -1,0 +1,35 @@
+Implement `my_memmove` — like `my_memcpy`, but it must work **even when the source and
+destination overlap**. This is the subtlety that separates `memmove` from `memcpy`.
+
+## Your task
+
+In `mymemmove.c`, implement:
+
+```c
+void *my_memmove(void *dst, const void *src, size_t n);
+```
+
+Copy exactly `n` bytes from `src` to `dst` and **return `dst`**. The regions **may overlap**.
+`n` may be `0`. **Do not call the library `memmove` or `memcpy`.**
+
+## Why direction matters
+
+If you always copy front-to-back and `dst > src` with overlap, you overwrite bytes of `src`
+before you've read them:
+
+```
+buf = a b c d e f
+my_memmove(buf, buf+2, 4)   // shift "cdef" left -> "cdefef"   (front-to-back is fine here)
+my_memmove(buf+2, buf, 4)   // shift "abcd" right -> naive f2b gives "ababab"  (WRONG)
+                            //                       correct memmove gives "ababcd"
+```
+
+## Hints (no spoilers)
+
+- Compare the pointers. If `dst < src`, copy **front-to-back**. If `dst > src`, copy
+  **back-to-front** (from index `n-1` down to `0`).
+- Cast to `unsigned char *` so `+1` moves a single byte.
+- `n == 0` copies nothing; still return `dst`.
+
+Graded with AddressSanitizer, so any out-of-bounds access is flagged. Use **Run** to experiment
+and **Submit** to grade.

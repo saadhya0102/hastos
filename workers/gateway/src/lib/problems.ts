@@ -1641,7 +1641,230 @@ int main(void) {
 #include "impl.c"
 `;
 
+/* ============================ new problem set ============================ */
+
+const CHECK_MACRO = `static int g_pass = 0, g_total = 0;
+#define CHECK(name, cond, msg) do { \\
+  g_total++; \\
+  if (cond) { g_pass++; printf("HASYSTOR_TEST name=\\"%s\\" status=PASS\\n", name); } \\
+  else { printf("HASYSTOR_TEST name=\\"%s\\" status=FAIL msg=\\"%s\\"\\n", name, msg); } \\
+} while (0)`;
+
+const MEMMOVE_HEADER = `#ifndef MYMEMMOVE_H
+#define MYMEMMOVE_H
+#include <stddef.h>
+void *my_memmove(void *dst, const void *src, size_t n);
+#endif
+`;
+
+const MEMMOVE_DRIVER = `#include "mymemmove.h"
+#include <stdio.h>
+#include <string.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  { char s[8] = "abcdef"; void *r = my_memmove(s + 2, s, 4);
+    CHECK("overlap_forward", memcmp(s, "ababcd", 6) == 0 && r == s + 2, "memmove(s+2,s,4) on abcdef -> ababcd"); }
+
+  { char s[8] = "abcdef"; my_memmove(s, s + 2, 4);
+    CHECK("overlap_backward", memcmp(s, "cdefef", 6) == 0, "memmove(s,s+2,4) on abcdef -> cdefef"); }
+
+  { char dst[6] = {0}; my_memmove(dst, "hello", 5);
+    CHECK("no_overlap", memcmp(dst, "hello", 5) == 0, "non-overlapping copy of hello"); }
+
+  { char s[4] = "abc"; void *r = my_memmove(s, s + 1, 0);
+    CHECK("zero_bytes", s[0] == 'a' && r == s, "n=0 copies nothing and returns dst"); }
+
+  { static unsigned char src[4096], dst[4096];
+    for (int i = 0; i < 4096; i++) src[i] = (unsigned char)(i * 31 + 7);
+    my_memmove(dst, src, 4096);
+    CHECK("large", memcmp(dst, src, 4096) == 0, "copy 4096 bytes correctly"); }
+
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const ISPOW2_HEADER = `#ifndef ISPOW2_H
+#define ISPOW2_H
+int is_pow2(unsigned long long x);
+#endif
+`;
+
+const ISPOW2_DRIVER = `#include "ispow2.h"
+#include <stdio.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  CHECK("one", is_pow2(1ull) == 1, "1 is 2^0");
+  CHECK("two", is_pow2(2ull) == 1, "2 is a power of two");
+  CHECK("three", is_pow2(3ull) == 0, "3 is not a power of two");
+  CHECK("zero", is_pow2(0ull) == 0, "0 is not a power of two");
+  CHECK("big", is_pow2(1ull << 40) == 1, "2^40 is a power of two");
+  CHECK("big_plus", is_pow2((1ull << 40) + 1) == 0, "2^40 + 1 is not");
+  CHECK("high_bit", is_pow2(1ull << 63) == 1, "2^63 is a power of two");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const GCD_HEADER = `#ifndef GCD_H
+#define GCD_H
+unsigned gcd(unsigned a, unsigned b);
+#endif
+`;
+
+const GCD_DRIVER = `#include "gcd.h"
+#include <stdio.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  CHECK("basic", gcd(12u, 8u) == 4u, "gcd(12,8) = 4");
+  CHECK("coprime", gcd(17u, 5u) == 1u, "gcd(17,5) = 1");
+  CHECK("a_zero", gcd(0u, 5u) == 5u, "gcd(0,5) = 5");
+  CHECK("b_zero", gcd(5u, 0u) == 5u, "gcd(5,0) = 5");
+  CHECK("multiple", gcd(100u, 10u) == 10u, "gcd(100,10) = 10");
+  CHECK("larger", gcd(48u, 36u) == 12u, "gcd(48,36) = 12");
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
+const VEC_HEADER = `#ifndef VEC_H
+#define VEC_H
+#include <stddef.h>
+typedef struct { int *data; size_t len; size_t cap; } vec_t;
+void vec_init(vec_t *v);
+void vec_push(vec_t *v, int x);
+int vec_get(const vec_t *v, size_t i);
+size_t vec_len(const vec_t *v);
+void vec_free(vec_t *v);
+#endif
+`;
+
+const VEC_DRIVER = `#include "vec.h"
+#include <stdio.h>
+
+${CHECK_MACRO}
+
+int main(void) {
+  { vec_t v; vec_init(&v);
+    CHECK("empty", vec_len(&v) == 0, "a fresh vector has length 0");
+    vec_free(&v); }
+
+  { vec_t v; vec_init(&v); vec_push(&v, 10); vec_push(&v, 20); vec_push(&v, 30);
+    CHECK("push_get", vec_len(&v) == 3 && vec_get(&v, 0) == 10 && vec_get(&v, 1) == 20 && vec_get(&v, 2) == 30,
+      "push three values then read them back");
+    vec_free(&v); }
+
+  { vec_t v; vec_init(&v); int ok = 1;
+    for (int i = 0; i < 1000; i++) vec_push(&v, i * 3);
+    if (vec_len(&v) != 1000) ok = 0;
+    for (int i = 0; i < 1000 && ok; i++) if (vec_get(&v, (size_t)i) != i * 3) ok = 0;
+    CHECK("many", ok, "push 1000 values and read them all back");
+    CHECK("grows", v.cap >= v.len && v.cap > 0, "capacity must grow to hold the elements");
+    vec_free(&v); }
+
+  { vec_t v; vec_init(&v); vec_push(&v, 1); vec_free(&v); vec_init(&v); vec_push(&v, 42);
+    CHECK("reuse", vec_len(&v) == 1 && vec_get(&v, 0) == 42, "init after free must work cleanly");
+    vec_free(&v); }
+
+  printf("HASYSTOR_SUMMARY passed=%d total=%d\\n", g_pass, g_total);
+  return g_pass == g_total ? 0 : 1;
+}
+#include "impl.c"
+`;
+
 const PROBLEMS: Record<string, HarnessProblem> = {
+  "m0-p-memmove": {
+    id: "m0-p-memmove",
+    languageId: 50,
+    header: { name: "mymemmove.h", content: MEMMOVE_HEADER },
+    driver: MEMMOVE_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "mymemmove.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      overlap_forward: "sample",
+      overlap_backward: "hidden",
+      no_overlap: "hidden",
+      zero_bytes: "hidden",
+      large: "hidden",
+    },
+  },
+
+  "m1-p-is-pow2": {
+    id: "m1-p-is-pow2",
+    languageId: 50,
+    header: { name: "ispow2.h", content: ISPOW2_HEADER },
+    driver: ISPOW2_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "ispow2.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      one: "sample",
+      two: "hidden",
+      three: "hidden",
+      zero: "hidden",
+      big: "hidden",
+      big_plus: "hidden",
+      high_bit: "hidden",
+    },
+  },
+
+  "m1-p-gcd": {
+    id: "m1-p-gcd",
+    languageId: 50,
+    header: { name: "gcd.h", content: GCD_HEADER },
+    driver: GCD_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "gcd.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 2,
+    wallTimeLimit: 5,
+    memoryLimitKb: 65536,
+    testVisibility: {
+      basic: "sample",
+      coprime: "hidden",
+      a_zero: "hidden",
+      b_zero: "hidden",
+      multiple: "hidden",
+      larger: "hidden",
+    },
+  },
+
+  "ds-dynamic-array": {
+    id: "ds-dynamic-array",
+    languageId: 50,
+    header: { name: "vec.h", content: VEC_HEADER },
+    driver: VEC_DRIVER,
+    implName: "impl.c",
+    learnerFileName: "vec.c",
+    compilerOptions: "-std=c11 -O1 -g -fsanitize=address,undefined",
+    cpuTimeLimit: 3,
+    wallTimeLimit: 8,
+    memoryLimitKb: 131072,
+    testVisibility: {
+      empty: "hidden",
+      push_get: "sample",
+      many: "hidden",
+      grows: "hidden",
+      reuse: "hidden",
+    },
+  },
+
   "ds-ring-buffer": {
     id: "ds-ring-buffer",
     languageId: 50, // C (GCC) — verify against the live Judge0 instance

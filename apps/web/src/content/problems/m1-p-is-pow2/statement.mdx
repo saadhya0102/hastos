@@ -1,0 +1,33 @@
+Detecting whether an integer is a **power of two** is a classic bit-manipulation warm-up and a
+building block for allocators, hash tables, and alignment math.
+
+## Your task
+
+In `ispow2.c`, implement:
+
+```c
+int is_pow2(unsigned long long x);
+```
+
+Return `1` if `x` is a power of two (exactly one bit set), otherwise `0`. **Zero is not a power
+of two.** Aim for **O(1)** with no loop.
+
+## The key trick
+
+For any nonzero `x`, the expression `x & (x - 1)` clears the **lowest set bit**:
+
+```
+x        = 0b0101000
+x - 1    = 0b0100111
+x & (x-1)= 0b0100000   (only the lowest set bit was removed)
+```
+
+A power of two has *exactly one* set bit, so removing it yields `0`. Combined with an `x != 0`
+check, that's the whole solution.
+
+## Hints (no spoilers)
+
+- `return x != 0 && (x & (x - 1)) == 0;`
+- Watch the zero case — `0 & (0 - 1)` is `0`, so you must exclude `x == 0` explicitly.
+
+Use **Run** to experiment and **Submit** to grade.

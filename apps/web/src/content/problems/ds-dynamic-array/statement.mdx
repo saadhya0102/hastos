@@ -1,0 +1,33 @@
+Implement a **growable array** (a.k.a. vector / dynamic array) — the backing structure behind
+Python `list`, Go slices, C++ `std::vector`, and countless systems. The interesting part is
+achieving **amortized O(1)** append via *geometric growth*.
+
+## Your task
+
+In `vec.c`, implement the API in `vec.h`:
+
+```c
+void   vec_init(vec_t *v);
+void   vec_push(vec_t *v, int x);
+int    vec_get(const vec_t *v, size_t i);
+size_t vec_len(const vec_t *v);
+void   vec_free(vec_t *v);
+```
+
+- `vec_init` starts empty (`data = NULL, len = 0, cap = 0`).
+- `vec_push` appends `x`, **growing capacity when full** — `0 → 1`, then **double** each time.
+- `vec_get` returns the element at index `i` (assume `0 <= i < len`).
+- `vec_free` releases storage and resets the struct so it can be re-initialized.
+
+## Why doubling?
+
+If you grew by a fixed amount each time, `n` pushes would copy `O(n²)` elements total. Doubling
+makes the total copying `O(n)` across all pushes — so each push is **amortized O(1)**.
+
+## Hints (no spoilers)
+
+- Grow with `realloc`: `size_t nc = v->cap ? v->cap * 2 : 1; v->data = realloc(v->data, nc * sizeof(int)); v->cap = nc;`
+- `vec_free`: `free(v->data);` then set `data = NULL, len = 0, cap = 0` so `reuse` works.
+
+Graded with AddressSanitizer — leaks and out-of-bounds access are caught. The tests push 1000
+elements and verify order, length, and that capacity grew. Use **Run** then **Submit**.
